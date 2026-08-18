@@ -9,15 +9,15 @@ from torch import nn
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
-from dataset import IdentityDataset, BASE_PATH
+from dataset import IdentityDataset, BASE_PATH, load_subject_ids
 from models import build_model
 
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Train a closed-set body identity classifier.")
     parser.add_argument("--mode", default="pressure", choices=["pressure", "depth_cover1", "depth_cover2", "depth_uncover"])
-    parser.add_argument("--train_split", default="real_train.txt")
-    parser.add_argument("--val_split", default="real_val.txt")
+    parser.add_argument("--train_split", default="real_all.txt")
+    parser.add_argument("--val_split", default="real_all.txt")
     parser.add_argument("--model", default="convnextv2_base")
     parser.add_argument("--batch_size", type=int, default=32)
     parser.add_argument("--epochs", type=int, default=30)
@@ -29,6 +29,15 @@ def parse_args():
     parser.add_argument("--out_dir", default=str(Path("/home/shnh/DATA/zjy/BodyMAP_identity")))
     parser.add_argument("--limit_subjects", type=int, default=None)
     parser.add_argument("--limit_poses", type=int, default=None)
+    parser.add_argument("--train_pose_start", type=int, default=0)
+    parser.add_argument("--train_pose_end", type=int, default=35)
+    parser.add_argument("--val_pose_start", type=int, default=35)
+    parser.add_argument("--val_pose_end", type=int, default=None)
+    parser.add_argument(
+        "--allow_disjoint_subjects",
+        action="store_true",
+        help="Allow subject-disjoint validation for representation diagnostics only; closed-set identity accuracy is not meaningful.",
+    )
     return parser.parse_args()
 
 
@@ -90,17 +99,35 @@ def main():
         args.device = "cpu"
     device = torch.device(args.device)
 
+    train_subjects = load_subject_ids(args.train_split, args.limit_subjects)
+    val_subjects = load_subject_ids(args.val_split, args.limit_subjects)
+    shared_subjects = [sid for sid in val_subjects if sid in set(train_subjects)]
+    if not shared_subjects and not args.allow_disjoint_subjects:
+        raise ValueError(
+            "Closed-set identity validation requires train/val subject overlap. "
+            f"Got 0 shared subjects between {args.train_split} and {args.val_split}. "
+            "Use the default real_all.txt pose split, provide overlapping splits, or pass "
+            "--allow_disjoint_subjects only for non-closed-set diagnostics."
+        )
+
+    label_to_idx = {sid: i for i, sid in enumerate(train_subjects)}
     train_dataset = IdentityDataset(
         args.train_split,
         mode=args.mode,
-        limit_subjects=args.limit_subjects,
         limit_poses=args.limit_poses,
+        subject_ids=train_subjects,
+        label_to_idx=label_to_idx,
+        pose_start=args.train_pose_start,
+        pose_end=args.train_pose_end,
     )
     val_dataset = IdentityDataset(
         args.val_split,
         mode=args.mode,
-        limit_subjects=args.limit_subjects,
         limit_poses=args.limit_poses,
+        subject_ids=shared_subjects if shared_subjects else val_subjects,
+        label_to_idx=label_to_idx,
+        pose_start=args.val_pose_start,
+        pose_end=args.val_pose_end,
     )
 
     train_loader = DataLoader(
@@ -130,6 +157,8 @@ def main():
     config["base_path"] = str(BASE_PATH)
     config["train_subjects"] = train_dataset.subject_ids
     config["val_subjects"] = val_dataset.subject_ids
+    config["shared_subjects"] = shared_subjects
+    config["closed_set_identity"] = bool(shared_subjects)
     config["train_samples"] = len(train_dataset)
     config["val_samples"] = len(val_dataset)
     (out_dir / "config.json").write_text(json.dumps(config, indent=2, ensure_ascii=False))
