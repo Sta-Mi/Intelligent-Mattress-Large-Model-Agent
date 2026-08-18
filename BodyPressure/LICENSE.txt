@@ -1,0 +1,194 @@
+Copyright (c) Henry M. Clever
+
+BODYPRESSURE: INFERRING BODY POSE AND CONTACT PRESSURE FROM A DEPTH IMAGE
+SOFTWARE AND DATASET LICENSE AGREEMENT
+
+This license *ONLY APPLIES* to our code and not to the terms of third party software. See third party software below for details.
+
+MIT License
+
+Copyright (c) Henry M. Clever
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+
+
+*********************************************************************************************************************
+
+THIRD-PARTY SOFTWARE NOTICES AND INFORMATION
+
+This project incorporates material from the project(s) listed below (collectively, "Third Party Code").  This Third Party Code is licensed to you under their original license terms set forth below.  We reserve all other rights not expressly granted, whether by implication, estoppel or otherwise.
+ 
+
+
+
+I.	SMPL, version 1.0.0, (https://smpl.is.tue.mpg.de/)
+
+Please read carefully the following terms and conditions and any accompanying documentation before you download and/or use the SMPL body model and software, (the "Model"), including 3D meshes, blend weights blend shapes, textures, software, scripts, and animations. By downloading and/or using the Model, you acknowledge that you have read these terms and conditions, understand them, and agree to be bound by them. If you do not agree with these terms and conditions, you must not download and/or use the Model.
+
+Ownership
+The Model has been developed at the Max Planck Institute for Intelligent Systems (hereinafter "MPI") and is owned by and proprietary material of the Max-Planck-Gesellschaft zur Förderung der Wissenschaften e.V. (hereinafter “MPG”; MPI and MPG hereinafter collectively “Max-Planck”).
+
+License Grant
+Max-Planck grants you a non-exclusive, non-transferable, free of charge right:
+
+To download the Model and use it on computers owned, leased or otherwise controlled by you and/or your organisation;
+To use the Model for the sole purpose of performing non-commercial scientific research, non-commercial education, or non-commercial artistic projects.
+Any other use, in particular any use for commercial purposes, is prohibited. This includes, without limitation, incorporation in a commercial product, use in a commercial service, as training data for a commercial product, for commercial ergonomic analysis (e.g. product design, architectural design, etc.), or production of other artifacts for commercial purposes including, for example, web services, movies, television programs, mobile applications, or video games. The Model may not be used for pornographic purposes or to generate pornographic material whether commercial or not. This license also prohibits the use of the Model to train methods/algorithms/neural networks/etc. for commercial use of any kind. The Model may not be reproduced, modified and/or made available in any form to any third party without Max-Planck’s prior written permission. By downloading the Model, you agree not to reverse engineer it.
+
+Disclaimer of Representations and Warranties
+You expressly acknowledge and agree that the Model results from basic research, is provided “AS IS”, may contain errors, and that any use of the Model is at your sole risk. MAX-PLANCK MAKES NO REPRESENTATIONS OR WARRANTIES OF ANY KIND CONCERNING THE MODEL, NEITHER EXPRESS NOR IMPLIED, AND THE ABSENCE OF ANY LEGAL OR ACTUAL DEFECTS, WHETHER DISCOVERABLE OR NOT. Specifically, and not to limit the foregoing, Max-Planck makes no representations or warranties (i) regarding the merchantability or fitness for a particular purpose of the Model, (ii) that the use of the Model will not infringe any patents, copyrights or other intellectual property rights of a third party, and (iii) that the use of the Model will not cause any damage of any kind to you or a third party.
+
+Limitation of Liability
+Under no circumstances shall Max-Planck be liable for any incidental, special, indirect or consequential damages arising out of or relating to this license, including but not limited to, any lost profits, business interruption, loss of programs or other data, or all other commercial damages or losses, even if advised of the possibility thereof.
+
+No Maintenance Services
+You understand and agree that Max-Planck is under no obligation to provide either maintenance services, update services, notices of latent defects, or corrections of defects with regard to the Model. Max-Planck nevertheless reserves the right to update, modify, or discontinue the Model at any time.
+
+Publication with SMPL
+You agree to cite the most recent paper describing the model as specified on the download website. This website lists the most up to date bibliographic information on the about page.
+
+Media projects with SMPL
+When using SMPL in a media project please give credit to Max Planck Institute for Intelligent Systems. For example: SMPL was used for character animation courtesy of the Max Planck Institute for Intelligent Systems.
+Commercial licensing opportunities
+For commercial use in the fields of medicine, psychology, and biomechanics, please contact ps-license@tue.mpg.de.
+For commercial use in all other fields please contact Body Labs Inc at smpl@bodylabs.com
+
+
+
+II. pyrender, (https://github.com/mmatl/pyrender) - 
+
+MIT License
+
+Copyright (c) 2019 Matthew Matl
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+
+
+III. trimesh, (https://github.com/mikedh/trimesh) - 
+
+The MIT License (MIT)
+
+Copyright (c) 2019 Michael Dawson-Haggerty
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+
+
+IV. SLP dataset, https://web.northeastern.edu/ostadabbas/2019/06/27/multimodal-in-bed-pose-estimation/
+
+By downloading or using the SLP Dataset, you are agreeing to the “Non-commercial Purposes” condition. “Non-commercial Purposes” means research, teaching, scientific publication and personal experimentation. Non-commercial Purposes include use of the Dataset to perform benchmarking for purposes of academic or applied research publication. Non-commercial Purposes does not include purposes primarily intended for or directed towards commercial advantage or monetary compensation, or purposes intended for or directed towards litigation, licensing, or enforcement, even in part.
+
+
+
+V. NVIDIA FleX, 
+
+Nvidia Source Code License (1-Way Commercial)
+
+1. Definitions
+
+“Licensor” means any person or entity that distributes its Work. “Software”
+means the original work of authorship made available under this License. “Work”
+means the Software and any additions to or derivative works of the Software that
+are made available under this License. The terms “reproduce,” “reproduction,”
+“derivative works,” and “distribution” have the meaning as provided under U.S.
+copyright law; provided, however, that for the purposes of this License,
+derivative works shall not include works that remain separable from, or merely
+link (or bind by name) to the interfaces of, the Work. Works, including the
+Software, are “made available” under this License by including in or with the
+Work either (a) a copyright notice referencing the applicability of this License
+to the Work, or (b) a copy of this License.
+
+2. License Grants
+
+2.1 Copyright Grant. Subject to the terms and conditions of this License, each
+Licensor grants to you a perpetual, worldwide, non-exclusive, royalty-free,
+copyright license to reproduce, prepare derivative works of, publicly display,
+publicly perform, sublicense and distribute its Work and any resulting
+derivative works in any form.
+
+3. Limitations
+
+3.1 Redistribution. You may reproduce or distribute the Work only if (a) you do
+so under this License, (b) you include a complete copy of this License with your
+distribution, and (c) you retain without modification any copyright, patent,
+trademark, or attribution notices that are present in the Work.
+
+3.2 Derivative Works. You may specify that additional or different terms apply
+to the use, reproduction, and distribution of your derivative works of the Work
+(“Your Terms”) only if you identify the specific derivative works that are
+subject to Your Terms. Notwithstanding Your Terms, this License (including the
+redistribution requirements in Section 3.1) will continue to apply to the Work
+itself.
+
+3.3 Patent Claims. If you bring or threaten to bring a patent claim against any
+Licensor (including any claim, cross-claim or counterclaim in a lawsuit) to
+enforce any patents that you allege are infringed by any Work, then your rights
+under this License from such Licensor (including the grant in Sections 2.1)
+will terminate immediately.
+
+3.4 Trademarks. This License does not grant any rights to use any Licensor’s or
+its affiliates’ names, logos, or trademarks, except as necessary to reproduce
+the notices described in this License.
+
+3.5 Termination. If you violate any term of this License, then your rights under
+this License (including the grant in Section 2.1) will terminate
+immediately.
+
+4. Disclaimer of Warranty.
+
+THE WORK IS PROVIDED “AS IS” WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND,
+EITHER EXPRESS OR IMPLIED, INCLUDING WARRANTIES OR CONDITIONS OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, TITLE OR NON-INFRINGEMENT.
+YOU BEAR THE RISK OF UNDERTAKING ANY ACTIVITIES UNDER THIS LICENSE. 
+
+5. Limitation of Liability.
+
+EXCEPT AS PROHIBITED BY APPLICABLE LAW, IN NO EVENT AND UNDER NO LEGAL THEORY,
+WHETHER IN TORT (INCLUDING NEGLIGENCE), CONTRACT, OR OTHERWISE SHALL ANY
+LICENSOR BE LIABLE TO YOU FOR DAMAGES, INCLUDING ANY DIRECT, INDIRECT, SPECIAL,
+INCIDENTAL, OR CONSEQUENTIAL DAMAGES ARISING OUT OF OR RELATED TO THIS LICENSE,
+THE USE OR INABILITY TO USE THE WORK (INCLUDING BUT NOT LIMITED TO LOSS OF
+GOODWILL, BUSINESS INTERRUPTION, LOST PROFITS OR DATA, COMPUTER FAILURE OR
+MALFUNCTION, OR ANY OTHER COMMERCIAL DAMAGES OR LOSSES), EVEN IF THE LICENSOR
+HAS BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGES.
+
+
+************END OF THIRD-PARTY SOFTWARE NOTICES AND INFORMATION**********
