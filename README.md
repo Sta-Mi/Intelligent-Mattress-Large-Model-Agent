@@ -45,7 +45,9 @@ python BodyPressure/identity_recognition/train_identity.py \
   --model small_cnn \
   --epochs 1 \
   --limit_subjects 2 \
-  --limit_poses 2
+  --train_pose_end 2 \
+  --val_pose_start 2 \
+  --val_pose_end 4
 ```
 
 正式训练 ConvNeXt V2 Base：
@@ -56,16 +58,22 @@ python BodyPressure/identity_recognition/train_identity.py \
   --model convnextv2_base \
   --mode pressure \
   --epochs 30 \
-  --batch_size 32
+  --batch_size 32 \
+  --train_pose_end 35 \
+  --val_pose_start 35
 ```
+
+
+> 注意：身份识别是 closed-set 分类时，训练集和验证集必须包含同一批 subject，只按姿态/时间/session 留出验证样本。`real_train.txt` 与 `real_val.txt` 是 BodyMAP 姿态估计使用的 subject-disjoint 划分，不适合作为 closed-set 身份识别的默认 train/val 组合。
 
 评估：
 
 ```bash
 python BodyPressure/identity_recognition/eval_identity.py \
   --checkpoint /home/shnh/DATA/zjy/BodyMAP_identity/best_model.pt \
-  --split real_val.txt \
-  --mode pressure
+  --split real_all.txt \
+  --mode pressure \
+  --pose_start 35
 ```
 
 ## 项目路线图
