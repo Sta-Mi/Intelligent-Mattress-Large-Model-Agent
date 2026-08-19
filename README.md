@@ -4,6 +4,7 @@
 
 - **BodyMAP（CVPR 2024）姿态/人体网格基线**：位于 `BodyPressure/BodyMAP/`，用于从深度图与压力图联合预测 3D 人体网格、3D 姿态/形状和人体表面压力分布。
 - **ConvNeXt V2 Base 身份识别基线**：位于 `BodyPressure/identity_recognition/`，用于在 SLP cleaned pressure/depth `.npy` 数据上做 closed-set subject ID 分类。
+- **身份识别前沿模型调研**：见 [`BodyPressure/identity_recognition/BASELINES.md`](BodyPressure/identity_recognition/BASELINES.md)，包含 DINOv2、MAE、ArcFace、ConvNeXt V2、Swin V2 的源码和建议实验协议。
 
 ## 已下载基线的建议用法
 
@@ -74,6 +75,15 @@ python BodyPressure/identity_recognition/train_identity.py \
   --val_pose_start 0 --val_pose_end 4 \
   --out_dir /tmp/identity_overfit_check
 ```
+
+检查实际压力数组中负值、正值和超过裁剪上限的比例：
+
+```bash
+python BodyPressure/identity_recognition/inspect_data.py \
+  /home/shnh/DATA/zjy/slp_real_cleaned/pressure_recon_Pplus_gt_0to102.npy
+```
+
+`pressure_recon_Pplus` 是重建结果，出现负值并不代表真实存在“负压力”；当前身份 Dataset 会把负值裁剪为 0。若 `positive_ratio` 只有几个百分点，输入会非常稀疏。模型现在保持原始 `64×27` 纵横比缩放并补边到 `224×224`，不再把人体压力图横向拉伸成正方形。
 
 > 注意：身份识别是 closed-set 分类时，训练集和验证集必须包含同一批 subject，只按姿态/时间/session 留出验证样本。`real_train.txt` 与 `real_val.txt` 是 BodyMAP 姿态估计使用的 subject-disjoint 划分，不适合作为 closed-set 身份识别的默认 train/val 组合。
 

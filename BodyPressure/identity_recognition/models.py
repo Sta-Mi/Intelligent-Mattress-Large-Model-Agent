@@ -17,6 +17,31 @@ CONVNEXT_V2_BASE_IN1K = DEFAULT_PRETRAINED_DIR / "convnextv2_base.fcmae_ft_in22k
 CONVNEXT_V2_BASE_22K = DEFAULT_PRETRAINED_DIR / "convnextv2_base_22k_224_ema.pt"
 
 
+def resize_with_padding(x, size=224):
+    """Resize BCHW input without distorting the pressure-map aspect ratio."""
+    height, width = x.shape[-2:]
+    scale = size / max(height, width)
+    resized_height = max(1, round(height * scale))
+    resized_width = max(1, round(width * scale))
+    x = F.interpolate(
+        x,
+        size=(resized_height, resized_width),
+        mode="bilinear",
+        align_corners=False,
+    )
+    pad_height = size - resized_height
+    pad_width = size - resized_width
+    return F.pad(
+        x,
+        (
+            pad_width // 2,
+            pad_width - pad_width // 2,
+            pad_height // 2,
+            pad_height - pad_height // 2,
+        ),
+    )
+
+
 class SmallCNN(nn.Module):
     def __init__(self, num_classes: int):
         super().__init__()
@@ -49,8 +74,8 @@ class ResNet18Identity(nn.Module):
         self.backbone.fc = nn.Linear(self.backbone.fc.in_features, num_classes)
 
     def forward(self, x):
-        if x.shape[-2] < 224 or x.shape[-1] < 224:
-            x = F.interpolate(x, size=(224, 224), mode="bilinear", align_corners=False)
+        if x.shape[-2:] != (224, 224):
+            x = resize_with_padding(x)
         if x.shape[1] == 1:
             x = x.repeat(1, 3, 1, 1)
         return self.backbone(x)
@@ -108,8 +133,8 @@ class TimmIdentity(nn.Module):
         return None, None
 
     def forward(self, x):
-        if x.shape[-2] < 224 or x.shape[-1] < 224:
-            x = F.interpolate(x, size=(224, 224), mode="bilinear", align_corners=False)
+        if x.shape[-2:] != (224, 224):
+            x = resize_with_padding(x)
         if x.shape[1] == 1:
             x = x.repeat(1, 3, 1, 1)
         x = (x - self.input_mean) / self.input_std
