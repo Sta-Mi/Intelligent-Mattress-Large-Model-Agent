@@ -124,6 +124,20 @@ python BodyPressure/identity_recognition/train_identity.py \
 
 `pressure_arcface` 使用保留 `8×4` 空间网格的压力编码器，将每帧映射为 256 维 L2-normalized embedding。训练时只对真实类别施加 ArcFace angular margin；验证时不施加 margin，而使用归一化类别权重的 cosine logits，避免人为压低验证指标。checkpoint 同时保存 encoder 与 ArcFace head，评估后还会生成 `embeddings.pt`，供余弦相似度验证和多帧模板聚合使用。
 
+ArcFace fold 4 若达到约 `22.9%` sample top-1、`65.35%` subject accuracy，而普通 PressureCNN 为约 `22.1%/66.34%`，表示 ArcFace 暂未改善 closed-set 分类，但不能只据此否定 embedding。先在严格 held-out pose embedding 上计算 verification ROC-AUC、EER 和 TAR@FAR：
+
+```bash
+python BodyPressure/identity_recognition/eval_identity.py \
+  --checkpoint /home/shnh/DATA/zjy/BodyMAP_identity_arcface_fold4/best_model.pt \
+  --split real_all.txt --mode pressure --device cuda \
+  --out_dir /home/shnh/DATA/zjy/BodyMAP_identity_arcface_fold4/heldout_eval
+
+python BodyPressure/identity_recognition/eval_verification.py \
+  --embeddings /home/shnh/DATA/zjy/BodyMAP_identity_arcface_fold4/heldout_eval/embeddings.pt
+```
+
+`eval_verification.py` 对 held-out embeddings 的所有上三角样本对计算 cosine similarity；同一 subject 为正对，不同 subject 为负对，并输出 ROC-AUC、EER、EER threshold 以及 TAR@FAR=0.1/0.01/0.001。不要使用 `--all_poses` 生成的 embedding 计算正式 verification 指标。
+
 当前 ConvNeXt V2 由 `timm` 创建，且可直接加载已下载的本地 checkpoint，**不需要再克隆 ConvNeXt-V2 仓库**。只有准备复现官方 FCMAE 预训练流程时才需要官方仓库。DINOv2/InsightFace 同样不应仅为运行现有 softmax 基线而克隆：实现压力域 DINO 自监督时再克隆 DINOv2；ArcFace loss 可以作为本项目中的小型 PyTorch 模块实现，无需引入整个 InsightFace 人脸识别工程。
 
 检查实际压力数组中负值、正值和超过裁剪上限的比例：

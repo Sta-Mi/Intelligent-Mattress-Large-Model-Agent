@@ -155,6 +155,7 @@ def main():
                 "labels": labels,
                 "idx_to_label": ckpt["idx_to_label"],
                 "pose_indices": pose_indices,
+                "includes_training_poses": bool(args.all_poses),
             },
             out_dir / "embeddings.pt",
         )
