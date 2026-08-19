@@ -1,12 +1,13 @@
 import argparse
 import json
+import math
 import time
 from pathlib import Path
 
 import numpy as np
 import torch
 from torch import nn
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, Sampler
 from tqdm import tqdm
 
 from dataset import IdentityDataset, BASE_PATH, DATA_PATH, MODES, load_subject_ids
@@ -22,6 +23,9 @@ def parse_args():
     parser.add_argument("--embedding_dim", type=int, default=256)
     parser.add_argument("--arcface_scale", type=float, default=30.0)
     parser.add_argument("--arcface_margin", type=float, default=0.3)
+    parser.add_argument("--samples_per_subject", type=int, default=4)
+    parser.add_argument("--supcon_weight", type=float, default=0.2)
+    parser.add_argument("--supcon_temperature", type=float, default=0.07)
     parser.add_argument("--batch_size", type=int, default=32)
     parser.add_argument("--epochs", type=int, default=30)
     parser.add_argument("--lr", type=float, default=1e-4, help="Base learning rate for pretrained backbone parameters.")
@@ -74,6 +78,65 @@ def stratified_pose_split(total_poses, folds, fold):
     val_indices = [index for index in range(total_poses) if index % folds == fold]
     train_indices = [index for index in range(total_poses) if index % folds != fold]
     return train_indices, val_indices
+
+
+class PKBatchSampler(Sampler):
+    """Build batches with K samples per subject for metric learning."""
+
+    def __init__(self, dataset, batch_size, samples_per_subject, seed=42):
+        if samples_per_subject < 2:
+            raise ValueError("--samples_per_subject must be at least 2")
+        self.subjects_per_batch = batch_size // samples_per_subject
+        if self.subjects_per_batch < 2:
+            raise ValueError("batch_size must contain at least two subjects")
+        self.samples_per_subject = samples_per_subject
+        self.num_batches = math.ceil(len(dataset) / batch_size)
+        self.seed = seed
+        self.epoch = 0
+        self.indices_by_label = {}
+        for index, sample in enumerate(dataset.samples):
+            self.indices_by_label.setdefault(sample[2], []).append(index)
+        self.labels = np.array(sorted(self.indices_by_label))
+
+    def __len__(self):
+        return self.num_batches
+
+    def __iter__(self):
+        rng = np.random.default_rng(self.seed + self.epoch)
+        self.epoch += 1
+        for _ in range(self.num_batches):
+            labels = rng.choice(
+                self.labels,
+                size=self.subjects_per_batch,
+                replace=len(self.labels) < self.subjects_per_batch,
+            )
+            batch = []
+            for label in labels:
+                candidates = self.indices_by_label[int(label)]
+                selected = rng.choice(
+                    candidates,
+                    size=self.samples_per_subject,
+                    replace=len(candidates) < self.samples_per_subject,
+                )
+                batch.extend(selected.tolist())
+            rng.shuffle(batch)
+            yield batch
+
+
+def supervised_contrastive_loss(embeddings, labels, temperature=0.07):
+    embeddings = nn.functional.normalize(embeddings, p=2, dim=1)
+    logits = embeddings @ embeddings.T / temperature
+    logits = logits - logits.max(dim=1, keepdim=True).values.detach()
+    self_mask = torch.eye(len(labels), dtype=torch.bool, device=labels.device)
+    positive_mask = labels[:, None].eq(labels[None, :]) & ~self_mask
+    if not positive_mask.any(dim=1).all():
+        raise ValueError("Every sample needs a positive pair; use PKBatchSampler with K>=2")
+    exp_logits = torch.exp(logits).masked_fill(self_mask, 0.0)
+    log_prob = logits - torch.log(exp_logits.sum(dim=1, keepdim=True).clamp_min(1e-12))
+    mean_positive_log_prob = (
+        (log_prob * positive_mask).sum(dim=1) / positive_mask.sum(dim=1)
+    )
+    return -mean_positive_log_prob.mean()
 
 
 def evaluate(model, loader, criterion, device, arcface_head=None):
@@ -177,16 +240,25 @@ def main():
         pose_indices=val_pose_indices,
     )
 
-    train_loader = DataLoader(
-        train_dataset,
-        batch_size=args.batch_size,
-        shuffle=True,
-        num_workers=args.workers,
-        # Never discard the only batch in small overfit/smoke tests. BatchNorm
-        # is still valid here because identity samples are image tensors and
-        # the default diagnostic uses more than one sample.
-        drop_last=False,
-    )
+    if args.model == "pressure_arcface":
+        train_loader = DataLoader(
+            train_dataset,
+            batch_sampler=PKBatchSampler(
+                train_dataset,
+                args.batch_size,
+                args.samples_per_subject,
+                seed=args.seed,
+            ),
+            num_workers=args.workers,
+        )
+    else:
+        train_loader = DataLoader(
+            train_dataset,
+            batch_size=args.batch_size,
+            shuffle=True,
+            num_workers=args.workers,
+            drop_last=False,
+        )
     val_loader = DataLoader(
         val_dataset,
         batch_size=args.batch_size,
@@ -282,6 +354,10 @@ def main():
                 arcface_head(outputs, labels) if arcface_head is not None else outputs
             )
             loss = criterion(logits, labels)
+            if arcface_head is not None and args.supcon_weight > 0:
+                loss = loss + args.supcon_weight * supervised_contrastive_loss(
+                    outputs, labels, temperature=args.supcon_temperature
+                )
             loss.backward()
             optimizer.step()
 
