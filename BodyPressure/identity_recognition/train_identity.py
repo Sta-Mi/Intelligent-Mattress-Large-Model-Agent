@@ -9,19 +9,20 @@ from torch import nn
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
-from dataset import IdentityDataset, BASE_PATH
+from dataset import IdentityDataset, BASE_PATH, load_subject_ids
 from models import build_model
 
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Train a closed-set body identity classifier.")
     parser.add_argument("--mode", default="pressure", choices=["pressure", "depth_cover1", "depth_cover2", "depth_uncover"])
-    parser.add_argument("--train_split", default="real_train.txt")
-    parser.add_argument("--val_split", default="real_val.txt")
+    parser.add_argument("--train_split", default="real_all.txt")
+    parser.add_argument("--val_split", default="real_all.txt")
     parser.add_argument("--model", default="convnextv2_base")
     parser.add_argument("--batch_size", type=int, default=32)
     parser.add_argument("--epochs", type=int, default=30)
-    parser.add_argument("--lr", type=float, default=1e-4)
+    parser.add_argument("--lr", type=float, default=1e-4, help="Base learning rate for pretrained backbone parameters.")
+    parser.add_argument("--head_lr_mult", type=float, default=10.0, help="Learning-rate multiplier for the randomly initialized classification head.")
     parser.add_argument("--weight_decay", type=float, default=1e-4)
     parser.add_argument("--device", default="cuda")
     parser.add_argument("--workers", type=int, default=0)
@@ -29,7 +30,28 @@ def parse_args():
     parser.add_argument("--out_dir", default=str(Path("/home/shnh/DATA/zjy/BodyMAP_identity")))
     parser.add_argument("--limit_subjects", type=int, default=None)
     parser.add_argument("--limit_poses", type=int, default=None)
+    parser.add_argument("--train_pose_start", type=int, default=0)
+    parser.add_argument("--train_pose_end", type=int, default=35)
+    parser.add_argument("--val_pose_start", type=int, default=35)
+    parser.add_argument("--val_pose_end", type=int, default=None)
+    parser.add_argument(
+        "--allow_disjoint_subjects",
+        action="store_true",
+        help="Allow subject-disjoint validation for representation diagnostics only; closed-set identity accuracy is not meaningful.",
+    )
     return parser.parse_args()
+
+
+def split_head_backbone_parameters(model):
+    head_keywords = ("head", "classifier", "fc")
+    head_params = []
+    backbone_params = []
+    for name, param in model.named_parameters():
+        if not param.requires_grad:
+            continue
+        target = head_params if any(part in name for part in head_keywords) else backbone_params
+        target.append(param)
+    return backbone_params, head_params
 
 
 def evaluate(model, loader, criterion, device):
@@ -90,17 +112,35 @@ def main():
         args.device = "cpu"
     device = torch.device(args.device)
 
+    train_subjects = load_subject_ids(args.train_split, args.limit_subjects)
+    val_subjects = load_subject_ids(args.val_split, args.limit_subjects)
+    shared_subjects = [sid for sid in val_subjects if sid in set(train_subjects)]
+    if not shared_subjects and not args.allow_disjoint_subjects:
+        raise ValueError(
+            "Closed-set identity validation requires train/val subject overlap. "
+            f"Got 0 shared subjects between {args.train_split} and {args.val_split}. "
+            "Use the default real_all.txt pose split, provide overlapping splits, or pass "
+            "--allow_disjoint_subjects only for non-closed-set diagnostics."
+        )
+
+    label_to_idx = {sid: i for i, sid in enumerate(train_subjects)}
     train_dataset = IdentityDataset(
         args.train_split,
         mode=args.mode,
-        limit_subjects=args.limit_subjects,
         limit_poses=args.limit_poses,
+        subject_ids=train_subjects,
+        label_to_idx=label_to_idx,
+        pose_start=args.train_pose_start,
+        pose_end=args.train_pose_end,
     )
     val_dataset = IdentityDataset(
         args.val_split,
         mode=args.mode,
-        limit_subjects=args.limit_subjects,
         limit_poses=args.limit_poses,
+        subject_ids=shared_subjects if shared_subjects else val_subjects,
+        label_to_idx=label_to_idx,
+        pose_start=args.val_pose_start,
+        pose_end=args.val_pose_end,
     )
 
     train_loader = DataLoader(
@@ -108,7 +148,10 @@ def main():
         batch_size=args.batch_size,
         shuffle=True,
         num_workers=args.workers,
-        drop_last=True,
+        # Never discard the only batch in small overfit/smoke tests. BatchNorm
+        # is still valid here because identity samples are image tensors and
+        # the default diagnostic uses more than one sample.
+        drop_last=False,
     )
     val_loader = DataLoader(
         val_dataset,
@@ -119,7 +162,13 @@ def main():
 
     model = build_model(args.model, train_dataset.num_classes).to(device)
     criterion = nn.CrossEntropyLoss()
-    optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
+    backbone_params, head_params = split_head_backbone_parameters(model)
+    param_groups = []
+    if backbone_params:
+        param_groups.append({"params": backbone_params, "lr": args.lr})
+    if head_params:
+        param_groups.append({"params": head_params, "lr": args.lr * args.head_lr_mult})
+    optimizer = torch.optim.AdamW(param_groups, lr=args.lr, weight_decay=args.weight_decay)
 
     out_dir = Path(args.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -130,11 +179,31 @@ def main():
     config["base_path"] = str(BASE_PATH)
     config["train_subjects"] = train_dataset.subject_ids
     config["val_subjects"] = val_dataset.subject_ids
+    config["shared_subjects"] = shared_subjects
+    config["closed_set_identity"] = bool(shared_subjects)
+    config["random_sample_acc"] = 1.0 / max(train_dataset.num_classes, 1)
+    config["random_top5_acc"] = min(5, train_dataset.num_classes) / max(train_dataset.num_classes, 1)
     config["train_samples"] = len(train_dataset)
     config["val_samples"] = len(val_dataset)
     (out_dir / "config.json").write_text(json.dumps(config, indent=2, ensure_ascii=False))
 
+    print(
+        "Identity protocol: "
+        f"{train_dataset.num_classes} classes, "
+        f"{len(train_dataset)} train samples in {len(train_loader)} batches, "
+        f"{len(val_dataset)} val samples in {len(val_loader)} batches, "
+        f"random top-1≈{config['random_sample_acc']:.4f}, "
+        f"random top-5≈{config['random_top5_acc']:.4f}."
+    )
+    if args.model == "convnextv2_base":
+        print(
+            "ConvNeXt V2 uses an ImageNet-pretrained backbone but a new randomly "
+            f"initialized identity head; head_lr={args.lr * args.head_lr_mult:g}, "
+            f"backbone_lr={args.lr:g}. First-epoch accuracy near random is expected."
+        )
+
     best_subject_acc = 0.0
+    warned_not_learning = False
     metrics_fp = metrics_path.open("a", encoding="utf-8")
 
     for epoch in range(1, args.epochs + 1):
@@ -157,6 +226,12 @@ def main():
             running_correct += (logits.argmax(dim=1) == labels).sum().item()
             running_total += labels.size(0)
 
+        if running_total == 0:
+            raise RuntimeError(
+                "Training processed zero samples. Check dataset size, batch size, "
+                "and DataLoader drop_last settings."
+            )
+
         val_metrics = evaluate(model, val_loader, criterion, device)
         train_acc = running_correct / max(running_total, 1)
         record = {
@@ -170,11 +245,25 @@ def main():
         metrics_fp.flush()
 
         print(
-            f"epoch {epoch:02d} train_acc={train_acc:.4f} "
+            f"epoch {epoch:02d} train_loss={record['train_loss']:.4f} "
+            f"train_acc={train_acc:.4f} val_loss={val_metrics['loss']:.4f} "
             f"val_acc={val_metrics['acc_sample']:.4f} "
             f"val_top5={val_metrics['acc_top5']:.4f} "
             f"val_subject_acc={val_metrics['acc_subject']:.4f}"
         )
+        random_loss = float(np.log(max(train_dataset.num_classes, 1)))
+        if (
+            epoch >= 5
+            and not warned_not_learning
+            and train_acc <= config["random_sample_acc"] * 1.5
+            and record["train_loss"] >= random_loss * 0.98
+        ):
+            print(
+                "WARNING: training is still at the random baseline after 5 epochs. "
+                "This is not normal; verify input statistics and try the small_cnn "
+                "overfit check before a full ConvNeXt run."
+            )
+            warned_not_learning = True
 
         if val_metrics["acc_subject"] > best_subject_acc:
             best_subject_acc = val_metrics["acc_subject"]
