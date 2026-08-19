@@ -1,25 +1,45 @@
+import importlib
+import os
+from pathlib import Path
+
 import torch
 import torch.nn.functional as F
-from pathlib import Path
 from torch import nn
 from torchvision.models import ResNet18_Weights, resnet18
 
-try:
-    import timm
-except Exception:
-    timm = None
-
-try:
-    from safetensors.torch import load_file as load_safetensors
-except Exception:
-    load_safetensors = None
-
-CONVNEXT_V2_BASE_IN1K = Path(
-    "/home/shnh/DATA/zjy/BodyMAP_identity_pretrained/convnextv2_base.fcmae_ft_in22k_in1k.safetensors"
+DEFAULT_PRETRAINED_DIR = Path(
+    os.environ.get(
+        "BODYMAP_IDENTITY_PRETRAINED_DIR",
+        "/home/shnh/DATA/zjy/BodyMAP_identity_pretrained",
+    )
 )
-CONVNEXT_V2_BASE_22K = Path(
-    "/home/shnh/DATA/zjy/BodyMAP_identity_pretrained/convnextv2_base_22k_224_ema.pt"
-)
+CONVNEXT_V2_BASE_IN1K = DEFAULT_PRETRAINED_DIR / "convnextv2_base.fcmae_ft_in22k_in1k.safetensors"
+CONVNEXT_V2_BASE_22K = DEFAULT_PRETRAINED_DIR / "convnextv2_base_22k_224_ema.pt"
+
+
+def resize_with_padding(x, size=224):
+    """Resize BCHW input without distorting the pressure-map aspect ratio."""
+    height, width = x.shape[-2:]
+    scale = size / max(height, width)
+    resized_height = max(1, round(height * scale))
+    resized_width = max(1, round(width * scale))
+    x = F.interpolate(
+        x,
+        size=(resized_height, resized_width),
+        mode="bilinear",
+        align_corners=False,
+    )
+    pad_height = size - resized_height
+    pad_width = size - resized_width
+    return F.pad(
+        x,
+        (
+            pad_width // 2,
+            pad_width - pad_width // 2,
+            pad_height // 2,
+            pad_height - pad_height // 2,
+        ),
+    )
 
 
 class SmallCNN(nn.Module):
@@ -47,6 +67,38 @@ class SmallCNN(nn.Module):
         return self.classifier(x)
 
 
+class PressureCNN(nn.Module):
+    """Pressure-native CNN that retains coarse body-contact geometry."""
+
+    def __init__(self, num_classes: int):
+        super().__init__()
+        self.features = nn.Sequential(
+            nn.Conv2d(1, 32, kernel_size=5, padding=2, bias=False),
+            nn.BatchNorm2d(32),
+            nn.ReLU(inplace=True),
+            nn.MaxPool2d(2),
+            nn.Conv2d(32, 64, kernel_size=3, padding=1, bias=False),
+            nn.BatchNorm2d(64),
+            nn.ReLU(inplace=True),
+            nn.MaxPool2d(2),
+            nn.Conv2d(64, 128, kernel_size=3, padding=1, bias=False),
+            nn.BatchNorm2d(128),
+            nn.ReLU(inplace=True),
+            nn.AdaptiveAvgPool2d((8, 4)),
+        )
+        self.classifier = nn.Sequential(
+            nn.Flatten(),
+            nn.Dropout(0.3),
+            nn.Linear(128 * 8 * 4, 512),
+            nn.ReLU(inplace=True),
+            nn.Dropout(0.3),
+            nn.Linear(512, num_classes),
+        )
+
+    def forward(self, x):
+        return self.classifier(self.features(x))
+
+
 class ResNet18Identity(nn.Module):
     def __init__(self, num_classes: int):
         super().__init__()
@@ -54,68 +106,88 @@ class ResNet18Identity(nn.Module):
         self.backbone.fc = nn.Linear(self.backbone.fc.in_features, num_classes)
 
     def forward(self, x):
-        if x.shape[-2] < 224 or x.shape[-1] < 224:
-            x = F.interpolate(x, size=(224, 224), mode="bilinear", align_corners=False)
+        if x.shape[-2:] != (224, 224):
+            x = resize_with_padding(x)
         if x.shape[1] == 1:
             x = x.repeat(1, 3, 1, 1)
         return self.backbone(x)
 
 
 class TimmIdentity(nn.Module):
-    def __init__(self, model_name: str, num_classes: int):
+    def __init__(
+        self,
+        model_name: str,
+        num_classes: int,
+        pretrained_dir: str | Path | None = None,
+        pretrained: bool = True,
+    ):
         super().__init__()
-        if timm is None:
-            raise RuntimeError("timm is not installed. Run: pip install timm")
+        timm = importlib.import_module("timm")
 
-        local_state = None
-        local_source = None
-        if model_name == "convnextv2_base":
-            if CONVNEXT_V2_BASE_IN1K.exists():
-                local_source = CONVNEXT_V2_BASE_IN1K
-                if load_safetensors is None:
-                    raise RuntimeError("safetensors is required to load the ConvNeXt V2 checkpoint")
-                local_state = load_safetensors(local_source)
-            elif CONVNEXT_V2_BASE_22K.exists():
-                local_source = CONVNEXT_V2_BASE_22K
-                checkpoint = torch.load(local_source, map_location="cpu")
-                local_state = checkpoint.get("model", checkpoint)
+        pretrained_root = Path(pretrained_dir) if pretrained_dir is not None else DEFAULT_PRETRAINED_DIR
+        local_state, local_source = self._load_local_state(model_name, pretrained_root)
 
+        self.backbone = timm.create_model(
+            model_name,
+            pretrained=pretrained and local_state is None,
+            num_classes=num_classes,
+        )
+        # The checkpoint was trained with ImageNet-normalized RGB input.
+        # Repeating a pressure map to three channels without normalization
+        # shifts the pretrained feature distribution and can prevent learning.
+        pretrained_cfg = self.backbone.pretrained_cfg
+        mean = pretrained_cfg.get("mean", (0.485, 0.456, 0.406))
+        std = pretrained_cfg.get("std", (0.229, 0.224, 0.225))
+        self.register_buffer("input_mean", torch.tensor(mean).view(1, 3, 1, 1), persistent=False)
+        self.register_buffer("input_std", torch.tensor(std).view(1, 3, 1, 1), persistent=False)
         if local_state is not None:
-            local_state = {
-                k: v for k, v in local_state.items()
-                if not k.startswith("head.fc.")
-            }
-            self.backbone = timm.create_model(
-                model_name,
-                pretrained=False,
-                num_classes=num_classes,
-            )
-            missing, unexpected = self.backbone.load_state_dict(
-                local_state,
-                strict=False,
-            )
+            missing, unexpected = self.backbone.load_state_dict(local_state, strict=False)
             print(
-                f"Loaded local ConvNeXt V2 checkpoint from {local_source}. "
+                f"Loaded local {model_name} checkpoint from {local_source}. "
                 f"missing={len(missing)} unexpected={len(unexpected)}"
             )
-        else:
-            self.backbone = timm.create_model(
-                model_name,
-                pretrained=True,
-                num_classes=num_classes,
-            )
+
+    @staticmethod
+    def _load_local_state(model_name: str, pretrained_root: Path):
+        if model_name != "convnextv2_base":
+            return None, None
+
+        in1k_path = pretrained_root / CONVNEXT_V2_BASE_IN1K.name
+        in22k_path = pretrained_root / CONVNEXT_V2_BASE_22K.name
+        if in1k_path.exists():
+            safetensors_torch = importlib.import_module("safetensors.torch")
+            state = safetensors_torch.load_file(in1k_path)
+            return strip_classifier_head(state), in1k_path
+        if in22k_path.exists():
+            checkpoint = torch.load(in22k_path, map_location="cpu")
+            state = checkpoint.get("model", checkpoint)
+            return strip_classifier_head(state), in22k_path
+        return None, None
 
     def forward(self, x):
-        if x.shape[-2] < 224 or x.shape[-1] < 224:
-            x = F.interpolate(x, size=(224, 224), mode="bilinear", align_corners=False)
+        if x.shape[-2:] != (224, 224):
+            x = resize_with_padding(x)
         if x.shape[1] == 1:
             x = x.repeat(1, 3, 1, 1)
+        x = (x - self.input_mean) / self.input_std
         return self.backbone(x)
+
+
+def strip_classifier_head(state):
+    classifier_prefixes = ("head.fc.", "head.")
+    classifier_keys = {"fc.weight", "fc.bias", "classifier.weight", "classifier.bias"}
+    return {
+        key: value
+        for key, value in state.items()
+        if not key.startswith(classifier_prefixes) and key not in classifier_keys
+    }
 
 
 def build_model(name: str, num_classes: int):
     if name == "small_cnn":
         return SmallCNN(num_classes)
+    if name == "pressure_cnn":
+        return PressureCNN(num_classes)
     if name == "resnet18":
         return ResNet18Identity(num_classes)
     if name == "convnextv2_base":
