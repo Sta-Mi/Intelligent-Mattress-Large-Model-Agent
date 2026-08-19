@@ -15,13 +15,9 @@ def parse_args():
     return parser.parse_args()
 
 
-def verification_metrics(embeddings, labels):
-    embeddings = F.normalize(embeddings.float(), p=2, dim=1)
-    labels = labels.long()
-    row, col = torch.triu_indices(len(labels), len(labels), offset=1)
-    scores = (embeddings[row] * embeddings[col]).sum(dim=1).cpu().numpy()
-    matches = labels[row].eq(labels[col]).cpu().numpy().astype(np.int64)
-
+def binary_verification_metrics(scores, matches):
+    scores = np.asarray(scores)
+    matches = np.asarray(matches, dtype=np.int64)
     order = np.argsort(-scores)
     scores = scores[order]
     matches = matches[order]
@@ -38,7 +34,6 @@ def verification_metrics(embeddings, labels):
     fpr = np.concatenate(([0.0], false_positive_rate, [1.0]))
     tpr = np.concatenate(([0.0], true_positive_rate, [1.0]))
     metrics = {
-        "num_embeddings": int(len(labels)),
         "num_positive_pairs": positives,
         "num_negative_pairs": negatives,
         "roc_auc": float(np.sum((tpr[1:] + tpr[:-1]) * np.diff(fpr) * 0.5)),
@@ -51,6 +46,17 @@ def verification_metrics(embeddings, labels):
         valid = np.flatnonzero(false_positive_rate <= target_far)
         tar = true_positive_rate[valid[-1]] if len(valid) else 0.0
         metrics[f"tar_at_far_{target_far:g}"] = float(tar)
+    return metrics
+
+
+def verification_metrics(embeddings, labels):
+    embeddings = F.normalize(embeddings.float(), p=2, dim=1)
+    labels = labels.long()
+    row, col = torch.triu_indices(len(labels), len(labels), offset=1)
+    scores = (embeddings[row] * embeddings[col]).sum(dim=1).cpu().numpy()
+    matches = labels[row].eq(labels[col]).cpu().numpy().astype(np.int64)
+    metrics = binary_verification_metrics(scores, matches)
+    metrics["num_embeddings"] = int(len(labels))
     return metrics
 
 

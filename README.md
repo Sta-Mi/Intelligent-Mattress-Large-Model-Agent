@@ -143,6 +143,17 @@ python BodyPressure/identity_recognition/eval_verification.py \
 
 如果 P×K + SupCon 后 held-out ROC-AUC 仍约 `0.58`、EER 约 `0.44`，说明按 subject classification accuracy 选 checkpoint 与 embedding verification 目标不一致。ArcFace 训练现在每个 epoch 直接在 909 个 held-out embeddings 上计算 ROC-AUC/EER/TAR@FAR，并按“最高 ROC-AUC、再最低 EER”保存和 early-stop；普通 softmax 模型仍按 subject/sample accuracy 选择。建议重新训练时先将 `--supcon_weight` 降为 `0.05`，避免强 SupCon 在姿态差异远大于身份差异时过度拉扯 embedding。
 
+若 verification-aware 最佳 checkpoint 仍只有 ROC-AUC 约 `0.59`、EER 约 `0.43`，单帧对单帧验证路线已经达到当前表示的瓶颈。智能床垫实际注册应使用多姿态 enrollment template：用 checkpoint 中 36 个训练姿态的 embedding 为每人求均值并 L2 normalize，只用 9 个 held-out 姿态作为 probe。该协议允许 enrollment 使用注册数据，但绝不把 enrollment 帧当 probe：
+
+```bash
+python BodyPressure/identity_recognition/eval_template_identity.py \
+  --checkpoint /home/shnh/DATA/zjy/BodyMAP_identity_arcface_auc_fold4/best_model.pt \
+  --split real_all.txt --mode pressure --device cuda \
+  --out_dir /home/shnh/DATA/zjy/BodyMAP_identity_arcface_auc_fold4/template_eval
+```
+
+输出的 `template_metrics.json` 包含 probe-to-template 的 top-1/top-5、subject accuracy、ROC-AUC、EER 和 TAR@FAR；`templates.pt` 是 101 个用户的注册模板。这个结果比任意两张 held-out 单帧互相比对更贴近连续监测床垫的实际身份注册/识别方式。
+
 当前 ConvNeXt V2 由 `timm` 创建，且可直接加载已下载的本地 checkpoint，**不需要再克隆 ConvNeXt-V2 仓库**。只有准备复现官方 FCMAE 预训练流程时才需要官方仓库。DINOv2/InsightFace 同样不应仅为运行现有 softmax 基线而克隆：实现压力域 DINO 自监督时再克隆 DINOv2；ArcFace loss 可以作为本项目中的小型 PyTorch 模块实现，无需引入整个 InsightFace 人脸识别工程。
 
 检查实际压力数组中负值、正值和超过裁剪上限的比例：
