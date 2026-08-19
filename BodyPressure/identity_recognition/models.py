@@ -75,6 +75,14 @@ class TimmIdentity(nn.Module):
             pretrained=pretrained and local_state is None,
             num_classes=num_classes,
         )
+        # The checkpoint was trained with ImageNet-normalized RGB input.
+        # Repeating a pressure map to three channels without normalization
+        # shifts the pretrained feature distribution and can prevent learning.
+        pretrained_cfg = self.backbone.pretrained_cfg
+        mean = pretrained_cfg.get("mean", (0.485, 0.456, 0.406))
+        std = pretrained_cfg.get("std", (0.229, 0.224, 0.225))
+        self.register_buffer("input_mean", torch.tensor(mean).view(1, 3, 1, 1), persistent=False)
+        self.register_buffer("input_std", torch.tensor(std).view(1, 3, 1, 1), persistent=False)
         if local_state is not None:
             missing, unexpected = self.backbone.load_state_dict(local_state, strict=False)
             print(
@@ -104,6 +112,7 @@ class TimmIdentity(nn.Module):
             x = F.interpolate(x, size=(224, 224), mode="bilinear", align_corners=False)
         if x.shape[1] == 1:
             x = x.repeat(1, 3, 1, 1)
+        x = (x - self.input_mean) / self.input_std
         return self.backbone(x)
 
 

@@ -199,6 +199,7 @@ def main():
         )
 
     best_subject_acc = 0.0
+    warned_not_learning = False
     metrics_fp = metrics_path.open("a", encoding="utf-8")
 
     for epoch in range(1, args.epochs + 1):
@@ -234,11 +235,25 @@ def main():
         metrics_fp.flush()
 
         print(
-            f"epoch {epoch:02d} train_acc={train_acc:.4f} "
+            f"epoch {epoch:02d} train_loss={record['train_loss']:.4f} "
+            f"train_acc={train_acc:.4f} val_loss={val_metrics['loss']:.4f} "
             f"val_acc={val_metrics['acc_sample']:.4f} "
             f"val_top5={val_metrics['acc_top5']:.4f} "
             f"val_subject_acc={val_metrics['acc_subject']:.4f}"
         )
+        random_loss = float(np.log(max(train_dataset.num_classes, 1)))
+        if (
+            epoch >= 5
+            and not warned_not_learning
+            and train_acc <= config["random_sample_acc"] * 1.5
+            and record["train_loss"] >= random_loss * 0.98
+        ):
+            print(
+                "WARNING: training is still at the random baseline after 5 epochs. "
+                "This is not normal; verify input statistics and try the small_cnn "
+                "overfit check before a full ConvNeXt run."
+            )
+            warned_not_learning = True
 
         if val_metrics["acc_subject"] > best_subject_acc:
             best_subject_acc = val_metrics["acc_subject"]

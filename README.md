@@ -63,7 +63,17 @@ python BodyPressure/identity_recognition/train_identity.py \
   --val_pose_start 35
 ```
 
-`real_all.txt` 当前包含 100 个 subject，因此随机 top-1 约为 1/100=0.0100，随机 top-5 约为 0.0500。ConvNeXt V2 的 backbone 会加载 ImageNet 预训练权重，但身份分类头是随机初始化的；第 1 个 epoch 出现 `train_acc≈0.007`、`val_acc≈0.010`、`val_top5≈0.050` 基本等同随机猜测，通常不代表脚本错误。建议至少观察 5--10 个 epoch 的 `metrics.jsonl` 趋势；若长期贴近随机水平，再优先检查数据路径、subject/pose 划分、学习率和输入模态是否正确。训练脚本默认给随机初始化分类头使用 `--head_lr_mult 10.0`，即 head 学习率为 backbone 学习率的 10 倍，以便身份分类头更快脱离随机状态。
+`real_all.txt` 包含 101 个 subject，因此随机 top-1 约为 `1/101=0.0099`，随机 top-5 约为 `5/101=0.0495`。仅第 1 个 epoch 出现 `train_acc≈0.007`、`val_acc≈0.010`、`val_top5≈0.050` 可能只是随机初始化；但若 5--10 个 epoch 后仍完全停留在这些数值，则**不正常**，说明模型没有学习。训练日志会同时打印 train/val loss：正常训练时 train loss 应从随机分类的 `ln(101)≈4.615` 明显下降。ConvNeXt V2 输入会按其 ImageNet 预训练配置归一化；训练脚本默认给随机初始化分类头使用 `--head_lr_mult 10.0`，即 head 学习率为 backbone 学习率的 10 倍。
+
+若完整训练停在随机水平，先用同一小批样本做过拟合检查；下面的 2-subject/4-pose 训练集与验证集故意相同，准确率应很快明显高于随机值 `0.5`：
+
+```bash
+python BodyPressure/identity_recognition/train_identity.py \
+  --device cuda --model small_cnn --mode pressure --epochs 20 \
+  --limit_subjects 2 --train_pose_start 0 --train_pose_end 4 \
+  --val_pose_start 0 --val_pose_end 4 \
+  --out_dir /tmp/identity_overfit_check
+```
 
 > 注意：身份识别是 closed-set 分类时，训练集和验证集必须包含同一批 subject，只按姿态/时间/session 留出验证样本。`real_train.txt` 与 `real_val.txt` 是 BodyMAP 姿态估计使用的 subject-disjoint 划分，不适合作为 closed-set 身份识别的默认 train/val 组合。
 
