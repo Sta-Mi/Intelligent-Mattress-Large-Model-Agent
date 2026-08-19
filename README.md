@@ -106,6 +106,8 @@ python BodyPressure/identity_recognition/train_identity.py \
   --out_dir /home/shnh/DATA/zjy/BodyMAP_identity_pressurecnn_stratified
 ```
 
+PressureCNN 在该分层协议上若达到约 `22%` sample top-1、`45%` top-5 和 `66%` subject-level accuracy，已经显著高于 `0.99%/4.95%/0.99%` 的随机基线，可作为有效的压力原生基线。训练准确率继续上升而验证 loss 在约第 10--20 轮后回升表示开始过拟合；脚本默认在 subject accuracy 连续 15 轮没有改善时提前停止，并在 checkpoint 中记录最佳 epoch、验证指标和完整配置。
+
 当前 ConvNeXt V2 由 `timm` 创建，且可直接加载已下载的本地 checkpoint，**不需要再克隆 ConvNeXt-V2 仓库**。只有准备复现官方 FCMAE 预训练流程时才需要官方仓库。DINOv2/InsightFace 同样不应仅为运行现有 softmax 基线而克隆：实现压力域 DINO 自监督时再克隆 DINOv2；ArcFace loss 可以作为本项目中的小型 PyTorch 模块实现，无需引入整个 InsightFace 人脸识别工程。
 
 检查实际压力数组中负值、正值和超过裁剪上限的比例：

@@ -24,6 +24,12 @@ def parse_args():
     parser.add_argument("--lr", type=float, default=1e-4, help="Base learning rate for pretrained backbone parameters.")
     parser.add_argument("--head_lr_mult", type=float, default=10.0, help="Learning-rate multiplier for the randomly initialized classification head.")
     parser.add_argument("--weight_decay", type=float, default=1e-4)
+    parser.add_argument(
+        "--early_stopping_patience",
+        type=int,
+        default=15,
+        help="Stop after this many epochs without improving subject accuracy; 0 disables it.",
+    )
     parser.add_argument("--device", default="cuda")
     parser.add_argument("--workers", type=int, default=0)
     parser.add_argument("--seed", type=int, default=42)
@@ -232,6 +238,9 @@ def main():
         )
 
     best_subject_acc = 0.0
+    best_score = (-1.0, -1.0, float("-inf"))
+    best_epoch = 0
+    epochs_without_improvement = 0
     warned_not_learning = False
     metrics_fp = metrics_path.open("a", encoding="utf-8")
 
@@ -294,22 +303,45 @@ def main():
             )
             warned_not_learning = True
 
-        if val_metrics["acc_subject"] > best_subject_acc:
+        score = (
+            val_metrics["acc_subject"],
+            val_metrics["acc_sample"],
+            -val_metrics["loss"],
+        )
+        if score > best_score:
+            best_score = score
             best_subject_acc = val_metrics["acc_subject"]
+            best_epoch = epoch
+            epochs_without_improvement = 0
             torch.save(
                 {
+                    "epoch": epoch,
                     "model_state": model.state_dict(),
                     "model_name": args.model,
                     "num_classes": train_dataset.num_classes,
                     "mode": args.mode,
                     "label_to_idx": train_dataset.label_to_idx,
                     "idx_to_label": train_dataset.idx_to_label,
+                    "val_metrics": val_metrics,
+                    "config": config,
                 },
                 checkpoint_path,
             )
+        else:
+            epochs_without_improvement += 1
+
+        if (
+            args.early_stopping_patience > 0
+            and epochs_without_improvement >= args.early_stopping_patience
+        ):
+            print(
+                f"Early stopping at epoch {epoch}: no subject-accuracy "
+                f"improvement for {args.early_stopping_patience} epochs."
+            )
+            break
 
     metrics_fp.close()
-    print(f"Best subject-level accuracy: {best_subject_acc:.4f}")
+    print(f"Best subject-level accuracy: {best_subject_acc:.4f} at epoch {best_epoch}")
     print(f"Checkpoint saved to {checkpoint_path}")
     print(f"Metrics saved to {metrics_path}")
 
