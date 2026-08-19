@@ -1,4 +1,5 @@
 import importlib
+import math
 import os
 from pathlib import Path
 
@@ -99,6 +100,71 @@ class PressureCNN(nn.Module):
         return self.classifier(self.features(x))
 
 
+class PressureEmbeddingNet(nn.Module):
+    """Pressure encoder for metric learning and open-set matching."""
+
+    def __init__(self, embedding_dim: int = 256):
+        super().__init__()
+        self.embedding_dim = embedding_dim
+        self.features = nn.Sequential(
+            nn.Conv2d(1, 32, kernel_size=5, padding=2, bias=False),
+            nn.BatchNorm2d(32),
+            nn.ReLU(inplace=True),
+            nn.MaxPool2d(2),
+            nn.Conv2d(32, 64, kernel_size=3, padding=1, bias=False),
+            nn.BatchNorm2d(64),
+            nn.ReLU(inplace=True),
+            nn.MaxPool2d(2),
+            nn.Conv2d(64, 128, kernel_size=3, padding=1, bias=False),
+            nn.BatchNorm2d(128),
+            nn.ReLU(inplace=True),
+            nn.AdaptiveAvgPool2d((8, 4)),
+        )
+        self.projection = nn.Sequential(
+            nn.Flatten(),
+            nn.Linear(128 * 8 * 4, 512, bias=False),
+            nn.BatchNorm1d(512),
+            nn.ReLU(inplace=True),
+            nn.Dropout(0.2),
+            nn.Linear(512, embedding_dim, bias=False),
+            nn.BatchNorm1d(embedding_dim),
+        )
+
+    def forward(self, x):
+        embedding = self.projection(self.features(x))
+        return F.normalize(embedding, p=2, dim=1)
+
+
+class ArcMarginProduct(nn.Module):
+    """ArcFace angular-margin classifier; labels are only used during training."""
+
+    def __init__(self, embedding_dim: int, num_classes: int, scale=30.0, margin=0.3):
+        super().__init__()
+        self.scale = scale
+        self.margin = margin
+        self.weight = nn.Parameter(torch.empty(num_classes, embedding_dim))
+        nn.init.xavier_uniform_(self.weight)
+        self.cos_margin = math.cos(margin)
+        self.sin_margin = math.sin(margin)
+        self.threshold = math.cos(math.pi - margin)
+        self.margin_correction = math.sin(math.pi - margin) * margin
+
+    def forward(self, embeddings, labels=None):
+        cosine = F.linear(F.normalize(embeddings), F.normalize(self.weight))
+        if labels is None:
+            return cosine * self.scale
+        sine = torch.sqrt(torch.clamp(1.0 - cosine.square(), min=0.0))
+        target_cosine = cosine * self.cos_margin - sine * self.sin_margin
+        target_cosine = torch.where(
+            cosine > self.threshold,
+            target_cosine,
+            cosine - self.margin_correction,
+        )
+        one_hot = F.one_hot(labels, num_classes=cosine.shape[1]).to(cosine.dtype)
+        logits = one_hot * target_cosine + (1.0 - one_hot) * cosine
+        return logits * self.scale
+
+
 class ResNet18Identity(nn.Module):
     def __init__(self, num_classes: int):
         super().__init__()
@@ -183,11 +249,13 @@ def strip_classifier_head(state):
     }
 
 
-def build_model(name: str, num_classes: int):
+def build_model(name: str, num_classes: int, embedding_dim: int = 256):
     if name == "small_cnn":
         return SmallCNN(num_classes)
     if name == "pressure_cnn":
         return PressureCNN(num_classes)
+    if name == "pressure_arcface":
+        return PressureEmbeddingNet(embedding_dim)
     if name == "resnet18":
         return ResNet18Identity(num_classes)
     if name == "convnextv2_base":

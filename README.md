@@ -108,6 +108,22 @@ python BodyPressure/identity_recognition/train_identity.py \
 
 PressureCNN 在该分层协议上若达到约 `22%` sample top-1、`45%` top-5 和 `66%` subject-level accuracy，已经显著高于 `0.99%/4.95%/0.99%` 的随机基线，可作为有效的压力原生基线。训练准确率继续上升而验证 loss 在约第 10--20 轮后回升表示开始过拟合；脚本默认在 subject accuracy 连续 15 轮没有改善时提前停止，并在 checkpoint 中记录最佳 epoch、验证指标和完整配置。
 
+五个 pose fold 的最佳 subject accuracy 为 `75.25%、77.23%、78.22%、75.25%、66.34%` 时，均值为 `74.46%`、样本标准差约 `4.72%`，说明多姿态聚合身份信号较稳定，可以进入 ArcFace/多帧 embedding 阶段。注意：对全部 45 个姿态评估会混入 36 个训练姿态；例如 `acc_sample≈75%`、`acc_subject=100%` 不能作为独立测试结果。评估脚本默认从新版 checkpoint 读取精确的 `val_pose_indices`；只有显式传入 `--all_poses` 才允许包含训练姿态的诊断评估。
+
+ArcFace + embedding 训练（先运行一个 fold）：
+
+```bash
+python BodyPressure/identity_recognition/train_identity.py \
+  --device cuda --model pressure_arcface --mode pressure \
+  --embedding_dim 256 --arcface_scale 30 --arcface_margin 0.3 \
+  --epochs 80 --batch_size 32 --lr 3e-4 --head_lr_mult 1 \
+  --weight_decay 1e-3 --split_strategy stratified \
+  --pose_folds 5 --pose_fold 4 --early_stopping_patience 15 \
+  --out_dir /home/shnh/DATA/zjy/BodyMAP_identity_arcface_fold4
+```
+
+`pressure_arcface` 使用保留 `8×4` 空间网格的压力编码器，将每帧映射为 256 维 L2-normalized embedding。训练时只对真实类别施加 ArcFace angular margin；验证时不施加 margin，而使用归一化类别权重的 cosine logits，避免人为压低验证指标。checkpoint 同时保存 encoder 与 ArcFace head，评估后还会生成 `embeddings.pt`，供余弦相似度验证和多帧模板聚合使用。
+
 当前 ConvNeXt V2 由 `timm` 创建，且可直接加载已下载的本地 checkpoint，**不需要再克隆 ConvNeXt-V2 仓库**。只有准备复现官方 FCMAE 预训练流程时才需要官方仓库。DINOv2/InsightFace 同样不应仅为运行现有 softmax 基线而克隆：实现压力域 DINO 自监督时再克隆 DINOv2；ArcFace loss 可以作为本项目中的小型 PyTorch 模块实现，无需引入整个 InsightFace 人脸识别工程。
 
 检查实际压力数组中负值、正值和超过裁剪上限的比例：
@@ -127,8 +143,7 @@ python BodyPressure/identity_recognition/inspect_data.py \
 python BodyPressure/identity_recognition/eval_identity.py \
   --checkpoint /home/shnh/DATA/zjy/BodyMAP_identity/best_model.pt \
   --split real_all.txt \
-  --mode pressure \
-  --pose_start 35
+  --mode pressure
 ```
 
 ## 项目路线图

@@ -10,7 +10,7 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 from dataset import IdentityDataset, BASE_PATH, DATA_PATH, MODES, load_subject_ids
-from models import build_model
+from models import ArcMarginProduct, build_model
 
 
 def parse_args():
@@ -19,6 +19,9 @@ def parse_args():
     parser.add_argument("--train_split", default="real_all.txt")
     parser.add_argument("--val_split", default="real_all.txt")
     parser.add_argument("--model", default="convnextv2_base")
+    parser.add_argument("--embedding_dim", type=int, default=256)
+    parser.add_argument("--arcface_scale", type=float, default=30.0)
+    parser.add_argument("--arcface_margin", type=float, default=0.3)
     parser.add_argument("--batch_size", type=int, default=32)
     parser.add_argument("--epochs", type=int, default=30)
     parser.add_argument("--lr", type=float, default=1e-4, help="Base learning rate for pretrained backbone parameters.")
@@ -73,8 +76,10 @@ def stratified_pose_split(total_poses, folds, fold):
     return train_indices, val_indices
 
 
-def evaluate(model, loader, criterion, device):
+def evaluate(model, loader, criterion, device, arcface_head=None):
     model.eval()
+    if arcface_head is not None:
+        arcface_head.eval()
     total_loss = 0.0
     correct = 0
     top5_correct = 0
@@ -86,7 +91,8 @@ def evaluate(model, loader, criterion, device):
         for images, labels in tqdm(loader, desc="eval", leave=False):
             images = images.to(device, non_blocking=True)
             labels = labels.to(device, non_blocking=True)
-            logits = model(images)
+            outputs = model(images)
+            logits = arcface_head(outputs) if arcface_head is not None else outputs
             loss = criterion(logits, labels)
 
             total_loss += loss.item() * labels.size(0)
@@ -188,14 +194,28 @@ def main():
         num_workers=args.workers,
     )
 
-    model = build_model(args.model, train_dataset.num_classes).to(device)
+    model = build_model(
+        args.model, train_dataset.num_classes, embedding_dim=args.embedding_dim
+    ).to(device)
     criterion = nn.CrossEntropyLoss()
+    arcface_head = None
+    if args.model == "pressure_arcface":
+        arcface_head = ArcMarginProduct(
+            args.embedding_dim,
+            train_dataset.num_classes,
+            scale=args.arcface_scale,
+            margin=args.arcface_margin,
+        ).to(device)
     backbone_params, head_params = split_head_backbone_parameters(model)
     param_groups = []
     if backbone_params:
         param_groups.append({"params": backbone_params, "lr": args.lr})
     if head_params:
         param_groups.append({"params": head_params, "lr": args.lr * args.head_lr_mult})
+    if arcface_head is not None:
+        param_groups.append(
+            {"params": arcface_head.parameters(), "lr": args.lr * args.head_lr_mult}
+        )
     optimizer = torch.optim.AdamW(param_groups, lr=args.lr, weight_decay=args.weight_decay)
 
     out_dir = Path(args.out_dir)
@@ -247,6 +267,8 @@ def main():
     for epoch in range(1, args.epochs + 1):
         start = time.time()
         model.train()
+        if arcface_head is not None:
+            arcface_head.train()
         running_loss = 0.0
         running_correct = 0
         running_total = 0
@@ -255,7 +277,10 @@ def main():
             images = images.to(device, non_blocking=True)
             labels = labels.to(device, non_blocking=True)
             optimizer.zero_grad(set_to_none=True)
-            logits = model(images)
+            outputs = model(images)
+            logits = (
+                arcface_head(outputs, labels) if arcface_head is not None else outputs
+            )
             loss = criterion(logits, labels)
             loss.backward()
             optimizer.step()
@@ -270,7 +295,9 @@ def main():
                 "and DataLoader drop_last settings."
             )
 
-        val_metrics = evaluate(model, val_loader, criterion, device)
+        val_metrics = evaluate(
+            model, val_loader, criterion, device, arcface_head=arcface_head
+        )
         train_acc = running_correct / max(running_total, 1)
         record = {
             "epoch": epoch,
@@ -317,7 +344,15 @@ def main():
                 {
                     "epoch": epoch,
                     "model_state": model.state_dict(),
+                    "arcface_state": (
+                        arcface_head.state_dict() if arcface_head is not None else None
+                    ),
                     "model_name": args.model,
+                    "embedding_dim": args.embedding_dim,
+                    "arcface_config": {
+                        "scale": args.arcface_scale,
+                        "margin": args.arcface_margin,
+                    },
                     "num_classes": train_dataset.num_classes,
                     "mode": args.mode,
                     "label_to_idx": train_dataset.label_to_idx,

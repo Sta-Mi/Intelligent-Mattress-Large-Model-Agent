@@ -69,6 +69,10 @@ session、睡姿或采集时间分组；如果测试 subject 从未出现在训�
 6. MAE 压力域预训练 + ViT-B/16 + ArcFace；
 7. DINOv2 ViT-B/14 压力域适配 + ArcFace。
 
+本仓库已提供 `pressure_arcface`：PressureCNN 空间编码器输出 L2-normalized embedding，
+训练时使用 ArcFace 角度间隔分类头，验证/推理时使用无 margin 的 cosine logits。评估脚本
+会额外保存 `embeddings.pt`，用于后续 verification、模板注册和多帧 embedding 聚合。
+
 除准确率外，同时报告参数量、FLOPs、推理延迟，以及至少 3 个随机种子的均值和标准差。
 主结果应来自独立 session/姿态测试，而不是训练样本上的过拟合准确率。
 
