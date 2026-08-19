@@ -154,6 +154,16 @@ python BodyPressure/identity_recognition/eval_template_identity.py \
 
 输出的 `template_metrics.json` 包含 probe-to-template 的 top-1/top-5、subject accuracy、ROC-AUC、EER 和 TAR@FAR；`templates.pt` 是 101 个用户的注册模板。这个结果比任意两张 held-out 单帧互相比对更贴近连续监测床垫的实际身份注册/识别方式。
 
+fold 4 的多姿态模板达到 ROC-AUC `0.7726`、EER `0.2913`、TAR@FAR=1% `0.2112`，相较单帧 pair 的约 `0.59/0.43/0.03` 有实质提升，说明 enrollment template 路线有效；但 `acc_subject=58.42%` 仍低于 PressureCNN softmax 多帧聚合基线，因此应保留两条指标线，不把 verification 提升表述成所有身份指标都提升。下一步对 5 个 fold 重复 template evaluation，并汇总均值、样本标准差、最小值和最大值：
+
+```bash
+python BodyPressure/identity_recognition/summarize_folds.py \
+  /home/shnh/DATA/zjy/BodyMAP_identity_arcface_auc_fold{0,1,2,3,4}/template_eval/template_metrics.json \
+  --out /home/shnh/DATA/zjy/BodyMAP_identity_arcface_template_5fold.json
+```
+
+只有五折 template ROC-AUC/EER 都稳定后，再实现姿态条件模板或在线模板更新；单个 fold 不能作为最终结论。
+
 当前 ConvNeXt V2 由 `timm` 创建，且可直接加载已下载的本地 checkpoint，**不需要再克隆 ConvNeXt-V2 仓库**。只有准备复现官方 FCMAE 预训练流程时才需要官方仓库。DINOv2/InsightFace 同样不应仅为运行现有 softmax 基线而克隆：实现压力域 DINO 自监督时再克隆 DINOv2；ArcFace loss 可以作为本项目中的小型 PyTorch 模块实现，无需引入整个 InsightFace 人脸识别工程。
 
 检查实际压力数组中负值、正值和超过裁剪上限的比例：
