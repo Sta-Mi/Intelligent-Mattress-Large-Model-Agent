@@ -234,6 +234,7 @@ if __name__ == '__main__':
     writer_metric_overall = SummaryWriter(os.path.join(writer_path, 'metric_overall'))
 
     metric_overall = create_metric_dict(PI)
+    metric_results = {}
     
     for cover_str in tqdm(['uncover', 'cover1', 'cover2'], desc='cover strs'):
         data_pressure_x, \
@@ -325,6 +326,7 @@ if __name__ == '__main__':
             metric_dict['parts_v2vP'][key] = round(133.32 * 133.32 * (1 / 1000000) * metric_dict['parts_v2vP'][key], 3)        
 
         writer_metric_overall.add_text(f'{cover_str}', json.dumps(metric_dict))
+        metric_results[cover_str] = metric_dict
 
     metric_overall['MPJPE'] = round(((metric_overall['MPJPE']/(metric_overall['count']*24))*1000).item(), 2)
     metric_overall['PVE'] = round(((metric_overall['PVE']/(metric_overall['count']*6890))*1000).item(), 2)
@@ -343,8 +345,16 @@ if __name__ == '__main__':
         metric_overall['parts_v2vP'][key] = round(133.32 * 133.32 * (1 / 1000000) * metric_overall['parts_v2vP'][key], 3)        
 
     writer_metric_overall.add_text(f'overall', json.dumps(metric_overall))
+    metric_results['overall'] = metric_overall
     writer_metric_overall.flush()
     writer_metric_overall.close()
+
+    metrics_json_path = os.path.join(writer_path, 'metrics.json')
+    with open(metrics_json_path, 'w') as metrics_fp:
+        json.dump(metric_results, metrics_fp, indent=2)
+
+    print(json.dumps(metric_results, indent=2))
+    print(f'Metrics saved to {metrics_json_path}')
 
     print ('done')
             
