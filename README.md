@@ -76,6 +76,8 @@ python BodyPressure/identity_recognition/train_identity.py \
   --out_dir /tmp/identity_overfit_check
 ```
 
+训练 DataLoader 不再丢弃最后一个不足 `batch_size` 的 batch。旧版本在上述 8 个样本、默认 `batch_size=32` 时因 `drop_last=True` 实际产生 **0 个训练 batch**，所以会显示 `train_loss=0.0000`、`train_acc=0.0000`；这不是数据或模型结果。新版启动日志会打印 train/val batch 数，并在实际处理 0 个训练样本时直接报错。
+
 检查实际压力数组中负值、正值和超过裁剪上限的比例：
 
 ```bash

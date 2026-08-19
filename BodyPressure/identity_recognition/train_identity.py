@@ -148,7 +148,10 @@ def main():
         batch_size=args.batch_size,
         shuffle=True,
         num_workers=args.workers,
-        drop_last=True,
+        # Never discard the only batch in small overfit/smoke tests. BatchNorm
+        # is still valid here because identity samples are image tensors and
+        # the default diagnostic uses more than one sample.
+        drop_last=False,
     )
     val_loader = DataLoader(
         val_dataset,
@@ -187,7 +190,8 @@ def main():
     print(
         "Identity protocol: "
         f"{train_dataset.num_classes} classes, "
-        f"{len(train_dataset)} train samples, {len(val_dataset)} val samples, "
+        f"{len(train_dataset)} train samples in {len(train_loader)} batches, "
+        f"{len(val_dataset)} val samples in {len(val_loader)} batches, "
         f"random top-1≈{config['random_sample_acc']:.4f}, "
         f"random top-5≈{config['random_top5_acc']:.4f}."
     )
@@ -221,6 +225,12 @@ def main():
             running_loss += loss.item() * labels.size(0)
             running_correct += (logits.argmax(dim=1) == labels).sum().item()
             running_total += labels.size(0)
+
+        if running_total == 0:
+            raise RuntimeError(
+                "Training processed zero samples. Check dataset size, batch size, "
+                "and DataLoader drop_last settings."
+            )
 
         val_metrics = evaluate(model, val_loader, criterion, device)
         train_acc = running_correct / max(running_total, 1)
