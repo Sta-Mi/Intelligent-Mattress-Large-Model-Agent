@@ -11,6 +11,7 @@ from torch.utils.data import DataLoader, Sampler
 from tqdm import tqdm
 
 from dataset import IdentityDataset, BASE_PATH, DATA_PATH, MODES, load_subject_ids
+from eval_verification import verification_metrics
 from models import ArcMarginProduct, build_model
 
 
@@ -24,7 +25,7 @@ def parse_args():
     parser.add_argument("--arcface_scale", type=float, default=30.0)
     parser.add_argument("--arcface_margin", type=float, default=0.3)
     parser.add_argument("--samples_per_subject", type=int, default=4)
-    parser.add_argument("--supcon_weight", type=float, default=0.2)
+    parser.add_argument("--supcon_weight", type=float, default=0.05)
     parser.add_argument("--supcon_temperature", type=float, default=0.07)
     parser.add_argument("--batch_size", type=int, default=32)
     parser.add_argument("--epochs", type=int, default=30)
@@ -149,6 +150,7 @@ def evaluate(model, loader, criterion, device, arcface_head=None):
     total = 0
     all_logits = []
     all_labels = []
+    all_embeddings = []
 
     with torch.no_grad():
         for images, labels in tqdm(loader, desc="eval", leave=False):
@@ -168,6 +170,8 @@ def evaluate(model, loader, criterion, device, arcface_head=None):
 
             all_logits.append(logits.cpu())
             all_labels.append(labels.cpu())
+            if arcface_head is not None:
+                all_embeddings.append(outputs.cpu())
 
     all_logits = torch.cat(all_logits, dim=0)
     all_labels = torch.cat(all_labels, dim=0)
@@ -182,12 +186,15 @@ def evaluate(model, loader, criterion, device, arcface_head=None):
         subject_correct += int(subject_pred == label_idx)
         subject_total += 1
 
-    return {
+    metrics = {
         "loss": total_loss / max(total, 1),
         "acc_sample": correct / max(total, 1),
         "acc_top5": top5_correct / max(total, 1),
         "acc_subject": subject_correct / max(subject_total, 1),
     }
+    if all_embeddings:
+        metrics.update(verification_metrics(torch.cat(all_embeddings), all_labels))
+    return metrics
 
 
 def main():
@@ -330,7 +337,7 @@ def main():
         )
 
     best_subject_acc = 0.0
-    best_score = (-1.0, -1.0, float("-inf"))
+    best_score = None
     best_epoch = 0
     epochs_without_improvement = 0
     warned_not_learning = False
@@ -392,6 +399,12 @@ def main():
             f"val_top5={val_metrics['acc_top5']:.4f} "
             f"val_subject_acc={val_metrics['acc_subject']:.4f}"
         )
+        if arcface_head is not None:
+            print(
+                f"           verification_auc={val_metrics['roc_auc']:.4f} "
+                f"eer={val_metrics['eer']:.4f} "
+                f"tar@far1%={val_metrics['tar_at_far_0.01']:.4f}"
+            )
         random_loss = float(np.log(max(train_dataset.num_classes, 1)))
         if (
             epoch >= 5
@@ -406,12 +419,20 @@ def main():
             )
             warned_not_learning = True
 
-        score = (
-            val_metrics["acc_subject"],
-            val_metrics["acc_sample"],
-            -val_metrics["loss"],
-        )
-        if score > best_score:
+        if arcface_head is not None:
+            score = (
+                val_metrics["roc_auc"],
+                -val_metrics["eer"],
+                val_metrics["acc_subject"],
+                val_metrics["acc_sample"],
+            )
+        else:
+            score = (
+                val_metrics["acc_subject"],
+                val_metrics["acc_sample"],
+                -val_metrics["loss"],
+            )
+        if best_score is None or score > best_score:
             best_score = score
             best_subject_acc = val_metrics["acc_subject"]
             best_epoch = epoch
@@ -446,13 +467,16 @@ def main():
             and epochs_without_improvement >= args.early_stopping_patience
         ):
             print(
-                f"Early stopping at epoch {epoch}: no subject-accuracy "
+                f"Early stopping at epoch {epoch}: no validation-objective "
                 f"improvement for {args.early_stopping_patience} epochs."
             )
             break
 
     metrics_fp.close()
-    print(f"Best subject-level accuracy: {best_subject_acc:.4f} at epoch {best_epoch}")
+    print(
+        f"Best checkpoint: epoch {best_epoch}, "
+        f"subject-level accuracy={best_subject_acc:.4f}, score={best_score}"
+    )
     print(f"Checkpoint saved to {checkpoint_path}")
     print(f"Metrics saved to {metrics_path}")
 
