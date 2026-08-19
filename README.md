@@ -59,9 +59,7 @@ python BodyPressure/identity_recognition/train_identity.py \
   --model convnextv2_base \
   --mode pressure \
   --epochs 30 \
-  --batch_size 32 \
-  --train_pose_end 35 \
-  --val_pose_start 35
+  --batch_size 32
 ```
 
 `real_all.txt` 包含 101 个 subject，因此随机 top-1 约为 `1/101=0.0099`，随机 top-5 约为 `5/101=0.0495`。仅第 1 个 epoch 出现 `train_acc≈0.007`、`val_acc≈0.010`、`val_top5≈0.050` 可能只是随机初始化；但若 5--10 个 epoch 后仍完全停留在这些数值，则**不正常**，说明模型没有学习。训练日志会同时打印 train/val loss：正常训练时 train loss 应从随机分类的 `ln(101)≈4.615` 明显下降。ConvNeXt V2 输入会按其 ImageNet 预训练配置归一化；训练脚本默认给随机初始化分类头使用 `--head_lr_mult 10.0`，即 head 学习率为 backbone 学习率的 10 倍。
@@ -71,12 +69,33 @@ python BodyPressure/identity_recognition/train_identity.py \
 ```bash
 python BodyPressure/identity_recognition/train_identity.py \
   --device cuda --model small_cnn --mode pressure --epochs 20 \
+  --split_strategy range \
   --limit_subjects 2 --train_pose_start 0 --train_pose_end 4 \
   --val_pose_start 0 --val_pose_end 4 \
   --out_dir /tmp/identity_overfit_check
 ```
 
 训练 DataLoader 不再丢弃最后一个不足 `batch_size` 的 batch。旧版本在上述 8 个样本、默认 `batch_size=32` 时因 `drop_last=True` 实际产生 **0 个训练 batch**，所以会显示 `train_loss=0.0000`、`train_acc=0.0000`；这不是数据或模型结果。新版启动日志会打印 train/val batch 数，并在实际处理 0 个训练样本时直接报错。
+
+该检查的通过标准是 train loss 持续下降并最终达到 `train_acc=1.0`；因为 train/val 故意使用完全相同的 8 个样本，`val_acc=1.0` 仅证明数据读取、标签、反向传播和模型保存链路正常，**不能作为泛化结果**。通过后应先运行压力原生 SmallCNN 的正式 pose-holdout 基线，再与 ConvNeXt V2 比较：
+
+```bash
+python BodyPressure/identity_recognition/train_identity.py \
+  --device cuda --model small_cnn --mode pressure \
+  --epochs 100 --batch_size 32 --lr 1e-3 --head_lr_mult 1 \
+  --split_strategy range \
+  --train_pose_start 0 --train_pose_end 35 \
+  --val_pose_start 35 --val_pose_end 45 \
+  --out_dir /home/shnh/DATA/zjy/BodyMAP_identity_smallcnn_pose_holdout
+```
+
+这里令 `--head_lr_mult 1`，是因为 SmallCNN 的特征提取器和分类头都是随机初始化的，不需要对分类头使用预训练模型专用的差分学习率。如果 SmallCNN 的 pose-holdout 指标明显高于随机值而 ConvNeXt 仍为随机水平，问题应定位为 RGB→压力的迁移/预训练域差异，而不是 Dataset 或标签错误。
+
+SLP 的 45 个姿态不是同分布随机帧：BodyMAP 将 `[0,15)` 作为 `lay`、`[15,45)` 作为 `side`。因此 `[0,35)` 训练、`[35,45)` 验证是偏向 side 姿态的严格跨姿态测试。若训练准确率持续升高而验证 top-1 仅约 `1%--3%`、验证 loss 持续升高，结论是严重的姿态过拟合，而不是“模型没有训练”。此时不应继续增加 epoch；应报告最佳验证 epoch，并进一步比较分层姿态划分、度量学习和压力域自监督预训练。
+
+训练脚本现在默认使用 `--split_strategy stratified --pose_folds 5 --pose_fold 4`：从 45 个姿态中每 5 个留出 1 个，验证姿态为 `[4,9,14,19,24,29,34,39,44]`，其余 36 个用于训练。这样 lay 和 side 都同时出现在训练/验证中，适合作为主 closed-set 基线；原来的连续区间应通过 `--split_strategy range` 显式启用，并作为更严格的 cross-posture 补充实验。
+
+当前 ConvNeXt V2 由 `timm` 创建，且可直接加载已下载的本地 checkpoint，**不需要再克隆 ConvNeXt-V2 仓库**。只有准备复现官方 FCMAE 预训练流程时才需要官方仓库。DINOv2/InsightFace 同样不应仅为运行现有 softmax 基线而克隆：实现压力域 DINO 自监督时再克隆 DINOv2；ArcFace loss 可以作为本项目中的小型 PyTorch 模块实现，无需引入整个 InsightFace 人脸识别工程。
 
 检查实际压力数组中负值、正值和超过裁剪上限的比例：
 

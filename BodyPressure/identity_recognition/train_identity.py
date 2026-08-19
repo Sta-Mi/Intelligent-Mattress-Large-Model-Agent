@@ -9,7 +9,7 @@ from torch import nn
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
-from dataset import IdentityDataset, BASE_PATH, load_subject_ids
+from dataset import IdentityDataset, BASE_PATH, DATA_PATH, MODES, load_subject_ids
 from models import build_model
 
 
@@ -30,6 +30,9 @@ def parse_args():
     parser.add_argument("--out_dir", default=str(Path("/home/shnh/DATA/zjy/BodyMAP_identity")))
     parser.add_argument("--limit_subjects", type=int, default=None)
     parser.add_argument("--limit_poses", type=int, default=None)
+    parser.add_argument("--split_strategy", choices=["stratified", "range"], default="stratified")
+    parser.add_argument("--pose_folds", type=int, default=5)
+    parser.add_argument("--pose_fold", type=int, default=4)
     parser.add_argument("--train_pose_start", type=int, default=0)
     parser.add_argument("--train_pose_end", type=int, default=35)
     parser.add_argument("--val_pose_start", type=int, default=35)
@@ -52,6 +55,16 @@ def split_head_backbone_parameters(model):
         target = head_params if any(part in name for part in head_keywords) else backbone_params
         target.append(param)
     return backbone_params, head_params
+
+
+def stratified_pose_split(total_poses, folds, fold):
+    if folds < 2:
+        raise ValueError("--pose_folds must be at least 2")
+    if fold < 0 or fold >= folds:
+        raise ValueError(f"--pose_fold must be in [0, {folds}), got {fold}")
+    val_indices = [index for index in range(total_poses) if index % folds == fold]
+    train_indices = [index for index in range(total_poses) if index % folds != fold]
+    return train_indices, val_indices
 
 
 def evaluate(model, loader, criterion, device):
@@ -124,23 +137,32 @@ def main():
         )
 
     label_to_idx = {sid: i for i, sid in enumerate(train_subjects)}
+    train_pose_indices = None
+    val_pose_indices = None
+    if args.split_strategy == "stratified":
+        total_poses = np.load(DATA_PATH / MODES[args.mode], mmap_mode="r").shape[1]
+        train_pose_indices, val_pose_indices = stratified_pose_split(
+            total_poses, args.pose_folds, args.pose_fold
+        )
     train_dataset = IdentityDataset(
         args.train_split,
         mode=args.mode,
-        limit_poses=args.limit_poses,
+        limit_poses=args.limit_poses if train_pose_indices is None else None,
         subject_ids=train_subjects,
         label_to_idx=label_to_idx,
-        pose_start=args.train_pose_start,
-        pose_end=args.train_pose_end,
+        pose_start=args.train_pose_start if train_pose_indices is None else None,
+        pose_end=args.train_pose_end if train_pose_indices is None else None,
+        pose_indices=train_pose_indices,
     )
     val_dataset = IdentityDataset(
         args.val_split,
         mode=args.mode,
-        limit_poses=args.limit_poses,
+        limit_poses=args.limit_poses if val_pose_indices is None else None,
         subject_ids=shared_subjects if shared_subjects else val_subjects,
         label_to_idx=label_to_idx,
-        pose_start=args.val_pose_start,
-        pose_end=args.val_pose_end,
+        pose_start=args.val_pose_start if val_pose_indices is None else None,
+        pose_end=args.val_pose_end if val_pose_indices is None else None,
+        pose_indices=val_pose_indices,
     )
 
     train_loader = DataLoader(
@@ -185,6 +207,8 @@ def main():
     config["random_top5_acc"] = min(5, train_dataset.num_classes) / max(train_dataset.num_classes, 1)
     config["train_samples"] = len(train_dataset)
     config["val_samples"] = len(val_dataset)
+    config["train_pose_indices"] = train_pose_indices
+    config["val_pose_indices"] = val_pose_indices
     (out_dir / "config.json").write_text(json.dumps(config, indent=2, ensure_ascii=False))
 
     print(
@@ -195,6 +219,11 @@ def main():
         f"random top-1≈{config['random_sample_acc']:.4f}, "
         f"random top-5≈{config['random_top5_acc']:.4f}."
     )
+    if train_pose_indices is not None:
+        print(
+            f"Stratified pose split: train={train_pose_indices}, "
+            f"val={val_pose_indices}."
+        )
     if args.model == "convnextv2_base":
         print(
             "ConvNeXt V2 uses an ImageNet-pretrained backbone but a new randomly "

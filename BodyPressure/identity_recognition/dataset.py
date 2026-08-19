@@ -59,6 +59,7 @@ class IdentityDataset(Dataset):
         label_to_idx: dict[str, int] | None = None,
         pose_start: int | None = None,
         pose_end: int | None = None,
+        pose_indices: list[int] | None = None,
     ):
         if mode not in MODES:
             raise ValueError(f"Unknown mode {mode}, choose from {list(MODES)}")
@@ -73,12 +74,22 @@ class IdentityDataset(Dataset):
 
         array_path = DATA_PATH / MODES[mode]
         self.data = np.load(array_path, mmap_mode="r")
-        pose_indices = resolve_pose_range(
-            self.data.shape[1],
-            pose_start=pose_start,
-            pose_end=pose_end,
-            limit_poses=limit_poses,
-        )
+        if pose_indices is None:
+            pose_indices = list(
+                resolve_pose_range(
+                    self.data.shape[1],
+                    pose_start=pose_start,
+                    pose_end=pose_end,
+                    limit_poses=limit_poses,
+                )
+            )
+        else:
+            if pose_start is not None or pose_end is not None or limit_poses is not None:
+                raise ValueError("pose_indices cannot be combined with pose ranges or limit_poses")
+            if not pose_indices or min(pose_indices) < 0 or max(pose_indices) >= self.data.shape[1]:
+                raise ValueError(
+                    f"Invalid pose_indices for {self.data.shape[1]} poses: {pose_indices}"
+                )
 
         self.samples = []
         for subject_id in self.subject_ids:
