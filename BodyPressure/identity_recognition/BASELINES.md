@@ -61,12 +61,13 @@ session、睡姿或采集时间分组；如果测试 subject 从未出现在训�
 
 在相同 split、输入尺寸和增强策略下至少比较：
 
-1. SmallCNN（数据管线 sanity check）；
-2. ResNet-18 + cross-entropy；
-3. ConvNeXt V2 Base + cross-entropy（当前实现）；
-4. ConvNeXt V2 Base + ArcFace；
-5. MAE 压力域预训练 + ViT-B/16 + ArcFace；
-6. DINOv2 ViT-B/14 压力域适配 + ArcFace。
+1. SmallCNN（只用于数据管线 sanity check；全局池化会丢失压力位置关系）；
+2. PressureCNN（保留 `8×4` 空间网格的压力原生监督基线）；
+3. ResNet-18 + cross-entropy；
+4. ConvNeXt V2 Base + cross-entropy（当前实现）；
+5. ConvNeXt V2 Base + ArcFace；
+6. MAE 压力域预训练 + ViT-B/16 + ArcFace；
+7. DINOv2 ViT-B/14 压力域适配 + ArcFace。
 
 除准确率外，同时报告参数量、FLOPs、推理延迟，以及至少 3 个随机种子的均值和标准差。
 主结果应来自独立 session/姿态测试，而不是训练样本上的过拟合准确率。

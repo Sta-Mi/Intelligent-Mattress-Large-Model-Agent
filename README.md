@@ -95,6 +95,17 @@ SLP 的 45 个姿态不是同分布随机帧：BodyMAP 将 `[0,15)` 作为 `lay`
 
 训练脚本现在默认使用 `--split_strategy stratified --pose_folds 5 --pose_fold 4`：从 45 个姿态中每 5 个留出 1 个，验证姿态为 `[4,9,14,19,24,29,34,39,44]`，其余 36 个用于训练。这样 lay 和 side 都同时出现在训练/验证中，适合作为主 closed-set 基线；原来的连续区间应通过 `--split_strategy range` 显式启用，并作为更严格的 cross-posture 补充实验。
 
+SmallCNN 使用 `AdaptiveAvgPool2d(1)`，会把压力特征压成全局均值，适合作为管线检查，但不适合作为最终压力身份模型。若它在分层划分上出现 train accuracy `>85%` 而 val top-1 只有 `2%--4%`，应停止继续训练。下一步使用保留粗粒度身体接触位置的 PressureCNN：
+
+```bash
+python BodyPressure/identity_recognition/train_identity.py \
+  --device cuda --model pressure_cnn --mode pressure \
+  --epochs 60 --batch_size 32 --lr 3e-4 --head_lr_mult 1 \
+  --weight_decay 1e-3 --split_strategy stratified \
+  --pose_folds 5 --pose_fold 4 \
+  --out_dir /home/shnh/DATA/zjy/BodyMAP_identity_pressurecnn_stratified
+```
+
 当前 ConvNeXt V2 由 `timm` 创建，且可直接加载已下载的本地 checkpoint，**不需要再克隆 ConvNeXt-V2 仓库**。只有准备复现官方 FCMAE 预训练流程时才需要官方仓库。DINOv2/InsightFace 同样不应仅为运行现有 softmax 基线而克隆：实现压力域 DINO 自监督时再克隆 DINOv2；ArcFace loss 可以作为本项目中的小型 PyTorch 模块实现，无需引入整个 InsightFace 人脸识别工程。
 
 检查实际压力数组中负值、正值和超过裁剪上限的比例：
