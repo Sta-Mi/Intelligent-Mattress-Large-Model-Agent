@@ -21,7 +21,8 @@ def parse_args():
     parser.add_argument("--model", default="convnextv2_base")
     parser.add_argument("--batch_size", type=int, default=32)
     parser.add_argument("--epochs", type=int, default=30)
-    parser.add_argument("--lr", type=float, default=1e-4)
+    parser.add_argument("--lr", type=float, default=1e-4, help="Base learning rate for pretrained backbone parameters.")
+    parser.add_argument("--head_lr_mult", type=float, default=10.0, help="Learning-rate multiplier for the randomly initialized classification head.")
     parser.add_argument("--weight_decay", type=float, default=1e-4)
     parser.add_argument("--device", default="cuda")
     parser.add_argument("--workers", type=int, default=0)
@@ -39,6 +40,18 @@ def parse_args():
         help="Allow subject-disjoint validation for representation diagnostics only; closed-set identity accuracy is not meaningful.",
     )
     return parser.parse_args()
+
+
+def split_head_backbone_parameters(model):
+    head_keywords = ("head", "classifier", "fc")
+    head_params = []
+    backbone_params = []
+    for name, param in model.named_parameters():
+        if not param.requires_grad:
+            continue
+        target = head_params if any(part in name for part in head_keywords) else backbone_params
+        target.append(param)
+    return backbone_params, head_params
 
 
 def evaluate(model, loader, criterion, device):
@@ -146,7 +159,13 @@ def main():
 
     model = build_model(args.model, train_dataset.num_classes).to(device)
     criterion = nn.CrossEntropyLoss()
-    optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
+    backbone_params, head_params = split_head_backbone_parameters(model)
+    param_groups = []
+    if backbone_params:
+        param_groups.append({"params": backbone_params, "lr": args.lr})
+    if head_params:
+        param_groups.append({"params": head_params, "lr": args.lr * args.head_lr_mult})
+    optimizer = torch.optim.AdamW(param_groups, lr=args.lr, weight_decay=args.weight_decay)
 
     out_dir = Path(args.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -159,9 +178,25 @@ def main():
     config["val_subjects"] = val_dataset.subject_ids
     config["shared_subjects"] = shared_subjects
     config["closed_set_identity"] = bool(shared_subjects)
+    config["random_sample_acc"] = 1.0 / max(train_dataset.num_classes, 1)
+    config["random_top5_acc"] = min(5, train_dataset.num_classes) / max(train_dataset.num_classes, 1)
     config["train_samples"] = len(train_dataset)
     config["val_samples"] = len(val_dataset)
     (out_dir / "config.json").write_text(json.dumps(config, indent=2, ensure_ascii=False))
+
+    print(
+        "Identity protocol: "
+        f"{train_dataset.num_classes} classes, "
+        f"{len(train_dataset)} train samples, {len(val_dataset)} val samples, "
+        f"random top-1≈{config['random_sample_acc']:.4f}, "
+        f"random top-5≈{config['random_top5_acc']:.4f}."
+    )
+    if args.model == "convnextv2_base":
+        print(
+            "ConvNeXt V2 uses an ImageNet-pretrained backbone but a new randomly "
+            f"initialized identity head; head_lr={args.lr * args.head_lr_mult:g}, "
+            f"backbone_lr={args.lr:g}. First-epoch accuracy near random is expected."
+        )
 
     best_subject_acc = 0.0
     metrics_fp = metrics_path.open("a", encoding="utf-8")

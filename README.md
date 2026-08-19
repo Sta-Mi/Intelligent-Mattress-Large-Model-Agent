@@ -63,6 +63,7 @@ python BodyPressure/identity_recognition/train_identity.py \
   --val_pose_start 35
 ```
 
+`real_all.txt` 当前包含 100 个 subject，因此随机 top-1 约为 1/100=0.0100，随机 top-5 约为 0.0500。ConvNeXt V2 的 backbone 会加载 ImageNet 预训练权重，但身份分类头是随机初始化的；第 1 个 epoch 出现 `train_acc≈0.007`、`val_acc≈0.010`、`val_top5≈0.050` 基本等同随机猜测，通常不代表脚本错误。建议至少观察 5--10 个 epoch 的 `metrics.jsonl` 趋势；若长期贴近随机水平，再优先检查数据路径、subject/pose 划分、学习率和输入模态是否正确。训练脚本默认给随机初始化分类头使用 `--head_lr_mult 10.0`，即 head 学习率为 backbone 学习率的 10 倍，以便身份分类头更快脱离随机状态。
 
 > 注意：身份识别是 closed-set 分类时，训练集和验证集必须包含同一批 subject，只按姿态/时间/session 留出验证样本。`real_train.txt` 与 `real_val.txt` 是 BodyMAP 姿态估计使用的 subject-disjoint 划分，不适合作为 closed-set 身份识别的默认 train/val 组合。
 
