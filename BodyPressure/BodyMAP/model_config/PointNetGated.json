@@ -1,0 +1,20 @@
+{
+    "exp_type"              : "normal",
+    "exp_run"               : "full-train-test",
+    "modality"              : "both",
+    "v2v_loss"              : true,
+    "pmap_loss"             : true,
+    "contact_loss_fn"       : "ct2",
+    "lambda_v2v_loss"       : 0.25,
+    "lambda_pmap_loss"      : 0.1,
+    "lambda_contact_loss"   : 0.1,
+    "main_model_fn"         : "PMM6",
+    "model_fn"              : "PME16",
+    "indexing_mode"         : 9,
+    "detect_anomaly"        : false,
+    "epochs_validate"       : 5,
+    "epochs_metric"         : 25,
+    "metric_at_start"       : false,
+    "exp str"               : "BodyMAP_PointNet_Gated, full-train-test, mod:both, dual-encoder gated fusion, PME16:9",
+    "name"                  : "BodyMAP_PointNet_Gated"
+}

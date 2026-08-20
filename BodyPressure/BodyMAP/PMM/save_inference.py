@@ -35,6 +35,14 @@ if __name__ == '__main__':
     args = parse_args()
 
     model, opts = load_model(args.model_path, args.opts_path)
+    model_modality = getattr(model, 'modality', None)
+    opts_modality = opts.get('modality')
+    print(f'Loaded model class={model.__class__.__name__}, model.modality={model_modality}, exp.modality={opts_modality}')
+    if model_modality is not None and opts_modality is not None and model_modality != opts_modality:
+        raise ValueError(
+            f'Model modality ({model_modality}) does not match exp.json modality '
+            f'({opts_modality}); use the exp.json shipped with this checkpoint.'
+        )
     writer_path = args.save_path
     os.makedirs(writer_path, exist_ok=True)
 
@@ -82,4 +90,3 @@ if __name__ == '__main__':
                 np.save(os.path.join(write_dir, f'{int(name_split[-1]):06d}_pd_jtr.npy'), pd_jtr.to("cpu").numpy() * 1000.)
                 np.save(os.path.join(write_dir, f'{int(name_split[-1]):06d}_pd_pmap.npy'), pd_pmap.to("cpu").numpy())
     print ('done')
-

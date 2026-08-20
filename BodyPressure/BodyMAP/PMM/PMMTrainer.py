@@ -12,6 +12,7 @@ from torch.utils.tensorboard import SummaryWriter
 
 from PMMModel import PMMModel as PMM1
 from PMMModel5 import PMMModel as PMM5
+from PMMModel6 import PMMModel as PMM6
 from PMMTrainerDataset import prepare_dataloaders
 from PMMInferDataset import prepare_loader as prepare_inferloader
 from PMMInfer import PMMInfer
@@ -22,6 +23,7 @@ from constants import *
 MODEL_FN_DICT = {
     'PMM1' : PMM1,
     'PMM5' : PMM5,
+    'PMM6' : PMM6,
 }
 
 
@@ -120,7 +122,10 @@ class PMMTrainer():
     def _train_epoch(self, model):
         model.train()
         running_losses = defaultdict(float)
-        with torch.autograd.set_detect_anomaly(True):
+        # Anomaly detection retains additional autograd state and synchronizes
+        # operations. It is useful for debugging NaNs, but prohibitively slow
+        # for full BodyPressure training, so keep it opt-in.
+        with torch.autograd.set_detect_anomaly(self.args['detect_anomaly']):
             for _, batch_pressure_images, _, batch_depth_images, batch_labels, batch_pmap, _, _ in iter(self.train_loader):
                 self.opt.zero_grad()
 
@@ -197,23 +202,36 @@ class PMMTrainer():
         model = model.to(DEVICE)
         print (f"Starting training for experiment - {self.args['name']} {self.args['exp str']}")
         print (f"Starting model training for {self.args['epochs'] - self.starting_epoch} epochs starting from {self.starting_epoch}")
+        print (f"Validation every {self.args['epochs_validate']} epoch(s); "
+               f"metrics every {self.args['epochs_metric']} epoch(s); "
+               f"autograd anomaly detection={self.args['detect_anomaly']}")
 
         for e in tqdm(range(self.starting_epoch, self.args['epochs'], 1)):
             train_losses = self._train_epoch(model)
-            val_losses = self._validate_epoch(model)
+            should_validate = (
+                e % self.args['epochs_validate'] == 0
+                or e == self.args['epochs'] - 1
+            )
+            val_losses = self._validate_epoch(model) if should_validate else None
 
             for k in train_losses:
-                self.writer.add_scalars(f'Loss/{k}', {'train': train_losses[k], 'val': val_losses[k]}, e)
+                self.writer.add_scalar(f'Loss/{k}/train', train_losses[k], e)
+                if val_losses is not None:
+                    self.writer.add_scalar(f'Loss/{k}/val', val_losses[k], e)
 
             self.writer.add_scalar('Learning_rate', self.opt.param_groups[0]['lr'], e)
             
-            if e % self.args['epochs_val_viz'] == 0:
+            run_start_diagnostics = e != 0 or self.args['metric_at_start']
+            run_visualization = run_start_diagnostics and e % self.args['epochs_val_viz'] == 0
+            run_metric = run_start_diagnostics and e % self.args['epochs_metric'] == 0
+
+            if run_visualization:
                 PMMInfer(model, self.infer_loader, writer=self.writer, save_gt=(e==0), epoch=e, pmap_norm=self.args['normalize_pressure'], infer_pmap=self.args['pmap_loss'], infer_smpl=self.args['smpl_loss'])
 
-            if e % self.args['epochs_metric'] == 0:
+            if run_metric:
                 PMMMetric(model, self.metric_loader, writer=self.writer, epoch=e, pmap_norm=self.args['normalize_pressure'], infer_pmap=self.args['pmap_loss'], infer_smpl=self.args['smpl_loss'])
             
-            if e % self.args['epochs_save'] == 0 or e % self.args['epochs_metric'] == 0:
+            if e % self.args['epochs_save'] == 0 or run_metric:
                 self._save_model(model, e)
                 model.to(DEVICE)
 

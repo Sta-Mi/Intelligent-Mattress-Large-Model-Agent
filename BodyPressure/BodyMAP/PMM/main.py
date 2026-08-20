@@ -102,8 +102,11 @@ def parse_args(args):
 
     # epochs settings setup
     args['epochs_metric'] = args.get('epochs_metric', 25)
-    args['epochs_save'] = 10
-    args['epochs_val_viz'] = args['epochs_metric'] 
+    args['epochs_save'] = args.get('epochs_save', 10)
+    args['epochs_validate'] = args.get('epochs_validate', 1)
+    args['epochs_val_viz'] = args.get('epochs_val_viz', args['epochs_metric'])
+    args['metric_at_start'] = args.get('metric_at_start', False)
+    args['detect_anomaly'] = args.get('detect_anomaly', False)
 
     # exp setup
     args['exp str'] = args.get('exp str', 'exp str is not set')
@@ -130,4 +133,3 @@ if __name__ == '__main__':
         trainer = PMMTrainer(args)
     model = trainer.train_model()
     print ()
-
