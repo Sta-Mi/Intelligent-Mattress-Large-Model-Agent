@@ -21,6 +21,15 @@ python main.py ../model_config/Conv.json
 
 `save_inference.py` 完成时只表示预测文件已生成；`metrics.py` 的进度条完成也不等于已经看到数值结果。新版 `metrics.py` 会将 uncover/cover1/cover2/overall 的 MPJPE、PVE、人体尺寸误差、v2vP/1EA/2EA 和分身体部位 pressure error 同时打印并写入 `<save_path>/metrics.json`，TensorBoard 事件仍保留在 `<save_path>/metric_overall/`。预训练权重究竟是 `both` 还是 `depth` 模态，应以对应 `exp.json` 的 `modality` 字段为准；即使是 depth-only，loader 仍会打印并传递 pressure tensor，模型内部配置才决定是否使用它。
 
+两个预训练权重都评估后，可比较 overall 指标和遮被退化比例：
+
+```bash
+python BodyPressure/BodyMAP/scripts/compare_metrics.py \
+  both=/path/to/both_metrics/metrics.json \
+  depth=/path/to/depth_metrics/metrics.json \
+  --out /path/to/pointnet_modality_comparison.json
+```
+
 ### 2. ConvNeXt V2 Base 身份识别
 
 身份识别脚本默认使用 `convnextv2_base`。若本地已经下载以下任一 checkpoint，代码会优先从本地加载；否则会回退到 `timm` 的在线 pretrained 权重：

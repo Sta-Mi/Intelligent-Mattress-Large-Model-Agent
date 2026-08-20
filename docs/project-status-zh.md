@@ -23,6 +23,12 @@
 身份结果只能证明 SLP 压力图包含身份信号，不能代替姿态、睡眠质量和控制任务。模板
 verification 的 EER 仍约 28%，只能称为研究原型，不能用于安全认证。
 
+BodyMAP-PointNet `modality=both` 预训练权重已在 SLP real validation（22 人 × 45 姿态 × 3
+遮被条件）完成推理：overall MPJPE `107.53 mm`、PVE `124.64 mm`、v2vP `3.307`。
+uncover MPJPE/PVE 为 `93.56/108.75 mm`，cover1 为 `114.59/132.73 mm`，cover2 为
+`114.44/132.44 mm`。该结果确认官方流程可运行，但仍需评估 depth-only 权重并与论文表格按
+完全相同协议对齐后，才能判断是否复现官方精度。
+
 ## 基线与公共数据
 
 ### 1. 细粒度姿态估计（现在的最高优先级）
