@@ -201,7 +201,7 @@ class MeshEstimator(nn.Module):
         #                             ]).permute(1, 0, 2)
         v_shaped_red = v_shaped
 
-        pose_feature = (joint_angles_matrix[:, 1:, :, :]).sub(1.0, torch.eye(3).float().to(DEVICE)).view(-1, 207)   # N, 207
+        pose_feature = (joint_angles_matrix[:, 1:, :, :] - torch.eye(3).float().to(DEVICE)).view(-1, 207)   # N, 207
         posedirs_repeat = torch.bmm(batch_gender, self.posedirs[0:batch_size_infer, :, :]) \
             .view(batch_size_infer, self.R_used * self.D, 207) \
             .permute(0, 2, 1)                                                                                       # N, 207, 30
@@ -270,4 +270,3 @@ if __name__ == '__main__':
 
     for k in mesh_pred:
         print (k, mesh_pred[k].shape)
-
