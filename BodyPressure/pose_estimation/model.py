@@ -6,6 +6,7 @@ spatial detail better than regressing every joint from one pooled feature.
 """
 
 import torch
+import torch.nn.functional as F
 from torch import nn
 
 
@@ -15,8 +16,8 @@ class PressurePoseTransformer(nn.Module):
     def __init__(self, num_joints=24, embed_dim=192, depth=6, num_heads=6,
                  patch_size=4, dropout=0.1):
         super().__init__()
-        if embed_dim % num_heads:
-            raise ValueError("embed_dim must be divisible by num_heads")
+        if embed_dim % num_heads or embed_dim % 4:
+            raise ValueError("embed_dim must be divisible by num_heads and 4")
         self.num_joints = num_joints
         self.patch_size = patch_size
         self.patch_embed = nn.Conv2d(1, embed_dim, patch_size, patch_size)
@@ -51,6 +52,11 @@ class PressurePoseTransformer(nn.Module):
     def forward(self, pressure):
         if pressure.ndim != 4 or pressure.shape[1] != 1:
             raise ValueError("pressure must have shape [batch, 1, height, width]")
+        # The native mat width is 27 taxels and is not divisible by the default
+        # patch size. Padding (rather than truncating) preserves the right edge.
+        pad_h = (-pressure.shape[-2]) % self.patch_size
+        pad_w = (-pressure.shape[-1]) % self.patch_size
+        pressure = F.pad(pressure, (0, pad_w, 0, pad_h))
         features = self.patch_embed(pressure)
         rows, cols = features.shape[-2:]
         tokens = features.flatten(2).transpose(1, 2)

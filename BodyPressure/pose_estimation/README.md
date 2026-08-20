@@ -3,7 +3,7 @@
 ## 选择
 
 本目录实现 **PressurePoseTransformer**：仅输入 `64×27` 压力图，使用 ViT-style
-taxel token encoder 和 24 个可学习 joint query，经 cross-attention 输出压力垫坐标系中的
+taxel token encoder 和 24 个可学习 joint query，经 cross-attention 输出 BodyMAP 合成床坐标系中的
 24 个 3D 身体关节（米）。它是一个可复现的现代强基线，不冒充已有论文的 SOTA 数字；
 真正的先进性需要在固定公开测试集上用 MPJPE/PCK 与其他方法实测。
 
@@ -32,6 +32,25 @@ python -m BodyPressure.pose_estimation.train --data_root /path/to/BodyPressureSD
   --val_files BodyPressure/pose_estimation/val_files.txt \
   --device cuda --epochs 100 --batch_size 64
 ```
+
+你当前给出的路径可以直接作为参数（也可以直接传到最后一级 `synth`）：
+
+```bash
+python -m BodyPressure.pose_estimation.train \
+  --data_root /home/zjy/Intelligent_Mattress_Large_Model_Agent/Intelligent-Mattress-Large-Model-Agent/BodyPressure/data_BP/synth \
+  --train_files BodyPressure/pose_estimation/train_files.txt \
+  --val_files BodyPressure/pose_estimation/val_files.txt --device cuda
+```
+
+loader 会采用与 BodyMAP 官方读取器相同的 `body_volume + gender` 质量换算，将模拟器压力
+强度转换为 mmHg 后裁剪/归一化；不能直接把 pickle 中的原始数值当作 mmHg。模型会把
+`64×27` 自动补边到 patch size 的整数倍，最右侧 3 列不会再被卷积静默丢弃。
+训练 sampler 会在文件内随机样本并随机文件顺序，但保持每个 batch 的 pickle 局部性；这是
+因为 pickle 不支持样本级随机读取，全局随机索引会反复重载数百 MB 文件，训练会异常缓慢。
+
+你已有的 `synth_depth` 与这些压力文件逐样本对应，可用于后续 **pressure-only 与
+pressure+depth** 的受控消融；但本基线有意不读取它。这样得到的结果才能回答“只靠智能床垫
+压力阵列能定位到什么程度”，也不会把顶视深度信息带来的提升误算成压力模型能力。
 
 `metrics.jsonl` 记录 train/validation MPJPE（毫米），`best_model.pt` 按最低 validation MPJPE
 保存。合成验证结果只能用于架构消融；要声称真实床垫精度，必须用自行采集且与训练 subject
