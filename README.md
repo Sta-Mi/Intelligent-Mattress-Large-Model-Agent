@@ -19,6 +19,8 @@ python main.py ../model_config/Conv.json
 
 训练完成后，按 BodyMAP README 的流程保存推理结果并计算 3D pose、3D shape、3D pressure metrics。
 
+`save_inference.py` 完成时只表示预测文件已生成；`metrics.py` 的进度条完成也不等于已经看到数值结果。新版 `metrics.py` 会将 uncover/cover1/cover2/overall 的 MPJPE、PVE、人体尺寸误差、v2vP/1EA/2EA 和分身体部位 pressure error 同时打印并写入 `<save_path>/metrics.json`，TensorBoard 事件仍保留在 `<save_path>/metric_overall/`。预训练权重究竟是 `both` 还是 `depth` 模态，应以对应 `exp.json` 的 `modality` 字段为准；即使是 depth-only，loader 仍会打印并传递 pressure tensor，模型内部配置才决定是否使用它。
+
 ### 2. ConvNeXt V2 Base 身份识别
 
 身份识别脚本默认使用 `convnextv2_base`。若本地已经下载以下任一 checkpoint，代码会优先从本地加载；否则会回退到 `timm` 的在线 pretrained 权重：
@@ -189,3 +191,5 @@ python BodyPressure/identity_recognition/eval_identity.py \
 ## 项目路线图
 
 中文实施路线图见 `docs/implementation-roadmap-zh.md`。
+
+当前完成度、身份五折结果和下一阶段执行顺序见 [`docs/project-status-zh.md`](docs/project-status-zh.md)。
