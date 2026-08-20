@@ -6,7 +6,7 @@ from PMMModel5 import PMMModel as EarlyFusionPMM
 
 
 def make_encoder():
-    encoder = models.__dict__["resnet18"](pretrained=False)
+    encoder = models.resnet18(weights=None)
     encoder.conv1 = nn.Conv2d(
         in_channels=1,
         out_channels=64,
