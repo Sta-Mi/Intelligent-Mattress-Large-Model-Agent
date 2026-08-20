@@ -53,6 +53,14 @@ def summarize(runs):
                 key: runs[label]["overall"][key] - runs[baseline]["overall"][key]
                 for key in SUMMARY_KEYS
             }
+            output["comparisons"][f"{label}_minus_{baseline}_percent_overall"] = {
+                key: 100.0
+                * (runs[label]["overall"][key] - runs[baseline]["overall"][key])
+                / runs[baseline]["overall"][key]
+                if runs[baseline]["overall"][key] != 0
+                else None
+                for key in SUMMARY_KEYS
+            }
     return output
 
 

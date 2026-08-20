@@ -30,6 +30,8 @@ python BodyPressure/BodyMAP/scripts/compare_metrics.py \
   --out /path/to/pointnet_modality_comparison.json
 ```
 
+`save_inference.py` 现在会同时打印序列化模型对象中的 `model.modality` 和 `exp.json` 的 `modality`，两者不一致时直接停止，避免只替换 JSON 而误标 checkpoint。`compare_metrics.py` 同时输出绝对差和相对百分比；所有 BodyMAP error 指标均为越低越好。
+
 ### 2. ConvNeXt V2 Base 身份识别
 
 身份识别脚本默认使用 `convnextv2_base`。若本地已经下载以下任一 checkpoint，代码会优先从本地加载；否则会回退到 `timm` 的在线 pretrained 权重：
