@@ -12,6 +12,7 @@ from torch.utils.tensorboard import SummaryWriter
 
 from PMMModel import PMMModel as PMM1
 from PMMModel5 import PMMModel as PMM5
+from PMMModel6 import PMMModel as PMM6
 from PMMTrainerDataset import prepare_dataloaders
 from PMMInferDataset import prepare_loader as prepare_inferloader
 from PMMInfer import PMMInfer
@@ -22,6 +23,7 @@ from constants import *
 MODEL_FN_DICT = {
     'PMM1' : PMM1,
     'PMM5' : PMM5,
+    'PMM6' : PMM6,
 }
 
 

@@ -10,3 +10,5 @@ sklearn
 open3d-python
 imutils
 camera
+timm
+safetensors
