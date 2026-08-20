@@ -32,6 +32,15 @@ python BodyPressure/BodyMAP/scripts/compare_metrics.py \
 
 `save_inference.py` 现在会同时打印序列化模型对象中的 `model.modality` 和 `exp.json` 的 `modality`，两者不一致时直接停止，避免只替换 JSON 而误标 checkpoint。`compare_metrics.py` 同时输出绝对差和相对百分比；所有 BodyMAP error 指标均为越低越好。
 
+当前官方预训练权重中 depth-only 显著优于 both early-fusion。为检验是否由输入级拼接造成负迁移，可训练独立双编码器、样本级 gated fusion 的 PointNet：
+
+```bash
+cd BodyPressure/BodyMAP/PMM
+python main.py ../model_config/PointNetGated.json
+```
+
+`PMM6` 不改变 SMPL/PME16 输出和损失，只将 PMM5 的 `concat(depth, pressure) -> one ResNet-18` 改为 `depth encoder + pressure encoder -> softmax gate -> fused features`，因此可与 PMM5 both 和 depth-only 做受控融合消融。
+
 ### 2. ConvNeXt V2 Base 身份识别
 
 身份识别脚本默认使用 `convnextv2_base`。若本地已经下载以下任一 checkpoint，代码会优先从本地加载；否则会回退到 `timm` 的在线 pretrained 权重：

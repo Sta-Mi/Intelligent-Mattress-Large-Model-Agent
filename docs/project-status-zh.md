@@ -35,6 +35,12 @@ uncover MPJPE/PVE 为 `93.56/108.75 mm`，cover1 为 `114.59/132.73 mm`，cover2
 来源和训练 epoch 可比之前，只能表述为“当前两个预训练 checkpoint 的比较”，不能直接
 得出“压力模态必然有害”的一般结论。
 
+两个 checkpoint 的序列化模型与配套配置已确认一致（PMM5/PME16/indexing 9/epoch 100，
+仅 modality/name/描述不同），因此该负融合对这两个官方预训练权重是有效观察。仓库新增
+`PMM6 + PointNetGated.json`：depth/pressure 分别经过独立 ResNet-18 encoder，再由样本级
+softmax gate 融合 512-channel feature map；它保留 PME16 顶点压力 head，用于检验负迁移
+是否来自 PMM5 的输入级两通道拼接。
+
 ## 基线与公共数据
 
 ### 1. 细粒度姿态估计（现在的最高优先级）
