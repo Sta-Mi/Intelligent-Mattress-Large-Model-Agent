@@ -13,6 +13,7 @@ from torch.utils.tensorboard import SummaryWriter
 from PMMModel import PMMModel as PMM1
 from PMMModel5 import PMMModel as PMM5
 from PMMModel6 import PMMModel as PMM6
+from PMMModel7 import PMMModel as PMM7
 from PMMTrainerDataset import prepare_dataloaders
 from PMMInferDataset import prepare_loader as prepare_inferloader
 from PMMInfer import PMMInfer
@@ -24,6 +25,7 @@ MODEL_FN_DICT = {
     'PMM1' : PMM1,
     'PMM5' : PMM5,
     'PMM6' : PMM6,
+    'PMM7' : PMM7,
 }
 
 
@@ -46,14 +48,16 @@ class PMMTrainer():
                                                                 (self.args['real_train_file'] if self.args['use_real'] else None, \
                                                                 self.args['synth_train_file'] if self.args['use_synth'] else None), \
                                                                 (self.args['real_val_file'] if self.args['use_real'] else None, \
-                                                                None), # setting synth val file as None to fasten up experiments
+                                                                self.args['synth_val_file'] if self.args['use_synth'] else None), \
                                                                 self.args['batch_size'], self.args['image_size_type'], \
                                                                 self.args['exp_type'], \
                                                                 self.args['normalize_pressure'], self.args['normalize_depth'], \
                                                                 self.args['is_affine'], self.args['is_erase'], \
                                                                 self.args['train_on_real'])
         
-        self.infer_loader, _ = prepare_inferloader(self.args['data_path'], (self.args['real_val_file'], self.args['synth_val_file']), \
+        self.infer_loader, _ = prepare_inferloader(self.args['data_path'], \
+                                            (self.args['real_val_file'] if self.args['use_real'] else None, \
+                                             self.args['synth_val_file'] if self.args['use_synth'] else None), \
                                             self.args['batch_size'], self.args['image_size_type'], \
                                             self.args['normalize_pressure'], self.args['normalize_depth'])
 

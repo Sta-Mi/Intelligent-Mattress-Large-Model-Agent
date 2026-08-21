@@ -65,6 +65,19 @@ python -m BodyPressure.pose_estimation.check_mesh_assets \
 需要 `GT_BP_DATA/bp2/*_gt_vertices.npy`、`*_gt_pmaps.npy`、男女 SMPL 模型和 parsed EA
 indexes。只有 `synth` 与 `synth_depth` 仍不足以计算这些指标。
 
+资产检查通过后，仓库提供两个相同 split、相同 BodyMAP mesh/PME16 decoder 的配置：
+
+```bash
+cd BodyPressure/BodyMAP/PMM
+python main.py ../model_config/PointNetPressureSynth.json
+python main.py ../model_config/PressureTransformerSynth.json
+```
+
+第一项是官方 ResNet-18 BodyMAP-PointNet PI backbone，第二项是 ViT pressure backbone；两者
+共享 BodyMAP 的 SMPL 与 PME16 decoder，只用 BodyPressureSD 1--70 训练，并在 71--80
+validation 上计算 MPJPE、PVE、Height/Chest/Waist/Hips 和 v2vP/1EA/2EA。训练期详细 metric
+每 100 epoch 运行一次，因为 mesh 截面人体尺寸计算明显慢于 loss validation。
+
 ### B. 取得合法真实测试数据后（最终论文应做）
 
 把两种模型都放到同一 subject-disjoint 真实压力测试集，统一 SMPL-24 joint order、单位、

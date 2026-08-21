@@ -79,6 +79,8 @@ convention 和 alignment，防止把不同协议下恰好接近的 MPJPE 误作�
 表格的详细可比性分析见 [`COMPARISON.md`](COMPARISON.md)。如果要比较 PVE、人体尺寸和
 v2vP，先运行 `check_mesh_assets.py`；这些指标不能由 24 关节事后推导，需要 GT vertices、
 GT per-vertex pressure、SMPL/SHAPY 和 EA indexes。
+资产齐备后可使用 BodyMAP 的 `PointNetPressureSynth.json` 与
+`PressureTransformerSynth.json` 在完全相同的 synthetic split 上完成全部 mesh/pressure 指标。
 
 ## 可替代数据的边界
 
