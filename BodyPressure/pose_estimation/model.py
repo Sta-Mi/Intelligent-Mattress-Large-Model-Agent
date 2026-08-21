@@ -73,3 +73,16 @@ class PressurePoseTransformer(nn.Module):
 def mpjpe(prediction, target):
     """Mean per-joint position error in metres."""
     return torch.linalg.vector_norm(prediction - target, dim=-1).mean()
+
+
+def pose_errors(prediction, target, root_index=0):
+    """Return absolute, pelvis-aligned, and per-joint Euclidean errors in metres."""
+    distances = torch.linalg.vector_norm(prediction - target, dim=-1)
+    prediction_rel = prediction - prediction[:, root_index:root_index + 1]
+    target_rel = target - target[:, root_index:root_index + 1]
+    relative = torch.linalg.vector_norm(prediction_rel - target_rel, dim=-1)
+    return {
+        "mpjpe": distances.mean(),
+        "root_mpjpe": relative.mean(),
+        "per_joint": distances.mean(dim=0),
+    }

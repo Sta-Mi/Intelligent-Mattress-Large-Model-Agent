@@ -56,6 +56,25 @@ pressure+depth** 的受控消融；但本基线有意不读取它。这样得到
 保存。合成验证结果只能用于架构消融；要声称真实床垫精度，必须用自行采集且与训练 subject
 隔离的真实压力图 + 关节标注测试，不能用不可获得的 SLP 结果替代。
 
+你这次 100 epoch 日志中的最低 validation MPJPE 是 **epoch 87 的 77.93 mm**，不是最后
+epoch 的 81.75 mm；训练仍持续下降、验证在约 79--83 mm 波动，属于轻度泛化平台期。新版
+训练默认使用 cosine learning-rate decay，并在连续 20 epoch 无改善时提前停止。PyTorch 输出的
+`enable_nested_tensor ... norm_first=True` 是性能提示，不影响数值正确性。
+
+不要只汇报一个 overall MPJPE。用已经保存的最佳 checkpoint 输出绝对、pelvis-aligned 和
+24 个身体部位误差：
+
+```bash
+python -m BodyPressure.pose_estimation.evaluate \
+  --checkpoint runs/pressure_pose_transformer/best_model.pt \
+  --data_root /home/shnh/DATA/zjy \
+  --files BodyPressure/pose_estimation/val_files.txt \
+  --device cuda
+```
+
+结果写到 checkpoint 同目录的 `evaluation.json`。手、腕、踝通常比躯干更能揭示模型是否真的
+实现了“细粒度定位”；pelvis-aligned MPJPE 则区分全身平移误差与关节构型误差。
+
 ## 可替代数据的边界
 
 1. **BodyPressureSD（首选预训练）**：公开且有 24 个 3D joints，最适合先打通细粒度定位；

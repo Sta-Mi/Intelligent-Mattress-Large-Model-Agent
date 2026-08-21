@@ -72,6 +72,7 @@ def main():
     parser.add_argument("--workers", type=int, default=4)
     parser.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--early_stopping_patience", type=int, default=20)
     args = parser.parse_args()
     random.seed(args.seed); np.random.seed(args.seed); torch.manual_seed(args.seed)
     device, out_dir = torch.device(args.device), Path(args.out_dir)
@@ -86,20 +87,31 @@ def main():
                             num_workers=args.workers, persistent_workers=args.workers > 0)
     model = PressurePoseTransformer().to(device)
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=0.05)
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.epochs,
+                                                           eta_min=args.lr * 0.01)
     best = float("inf")
+    stale_epochs = 0
     for epoch in range(1, args.epochs + 1):
         train_error = run_epoch(model, train_loader, optimizer, device)
         with torch.no_grad():
             val_error = run_epoch(model, val_loader, None, device)
-        metrics = {"epoch": epoch, "train_mpjpe_mm": train_error * 1000,
+        metrics = {"epoch": epoch, "lr": optimizer.param_groups[0]["lr"],
+                   "train_mpjpe_mm": train_error * 1000,
                    "val_mpjpe_mm": val_error * 1000}
         print(json.dumps(metrics))
         with (out_dir / "metrics.jsonl").open("a") as stream:
             stream.write(json.dumps(metrics) + "\n")
         if val_error < best:
             best = val_error
+            stale_epochs = 0
             torch.save({"model": model.state_dict(), "args": vars(args),
                         "metrics": metrics}, out_dir / "best_model.pt")
+        else:
+            stale_epochs += 1
+        scheduler.step()
+        if args.early_stopping_patience and stale_epochs >= args.early_stopping_patience:
+            print(f"early stopping: no validation improvement for {stale_epochs} epochs")
+            break
 
 
 if __name__ == "__main__":
