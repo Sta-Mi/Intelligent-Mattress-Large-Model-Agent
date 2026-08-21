@@ -52,6 +52,14 @@ def main():
             per_joint_sum += errors["per_joint"] * count
             sample_count += count
     result = {
+        "protocol": {
+            "dataset": "BodyPressureSD",
+            "domain": "synthetic",
+            "modality": "PI",
+            "split_file": str(Path(args.files).resolve()),
+            "joint_convention": "SMPL-24",
+            "coordinate_alignment": "absolute synthetic-bed frame",
+        },
         "samples": sample_count,
         "checkpoint_epoch": checkpoint.get("metrics", {}).get("epoch"),
         "mpjpe_mm": absolute_sum / sample_count * 1000,

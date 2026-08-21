@@ -74,6 +74,11 @@ python -m BodyPressure.pose_estimation.evaluate \
 
 结果写到 checkpoint 同目录的 `evaluation.json`。手、腕、踝通常比躯干更能揭示模型是否真的
 实现了“细粒度定位”；pelvis-aligned MPJPE 则区分全身平移误差与关节构型误差。
+`evaluation.json` 还写入 dataset、synthetic/real domain、PI modality、split 文件、joint
+convention 和 alignment，防止把不同协议下恰好接近的 MPJPE 误作横向排名。与 BodyMAP 论文
+表格的详细可比性分析见 [`COMPARISON.md`](COMPARISON.md)。如果要比较 PVE、人体尺寸和
+v2vP，先运行 `check_mesh_assets.py`；这些指标不能由 24 关节事后推导，需要 GT vertices、
+GT per-vertex pressure、SMPL/SHAPY 和 EA indexes。
 
 ## 可替代数据的边界
 

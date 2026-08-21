@@ -4,6 +4,7 @@
 
 - **BodyMAP（CVPR 2024）姿态/人体网格基线**：位于 `BodyPressure/BodyMAP/`，用于从深度图与压力图联合预测 3D 人体网格、3D 姿态/形状和人体表面压力分布。
 - **PressurePoseTransformer（无 SLP 基线）**：位于 `BodyPressure/pose_estimation/`，仅用公开无密码的 BodyPressureSD 压力图训练，输出 24 个 3D 身体关节，适合无法获得 SLP 原始包时复现细粒度身体部位定位。
+  其 synthetic MPJPE 不能直接与 BodyMAP 的 SLP real MPJPE 排名；协议差异见 [`COMPARISON.md`](BodyPressure/pose_estimation/COMPARISON.md)。
 - **ConvNeXt V2 Base 身份识别基线**：位于 `BodyPressure/identity_recognition/`，用于在 SLP cleaned pressure/depth `.npy` 数据上做 closed-set subject ID 分类。
 - **身份识别前沿模型调研**：见 [`BodyPressure/identity_recognition/BASELINES.md`](BodyPressure/identity_recognition/BASELINES.md)，包含 DINOv2、MAE、ArcFace、ConvNeXt V2、Swin V2 的源码和建议实验协议。
 
