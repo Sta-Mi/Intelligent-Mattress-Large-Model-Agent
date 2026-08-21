@@ -64,13 +64,25 @@ class PMMInferDataset(Dataset):
         self.data_verts_y = None
         self.data_names_y = None
 
-        data_lines = utils.load_data_lines(real_file)
-        for cover_str in ['uncover', 'cover1', 'cover2']:
-            data_returns = SLPDataset(self.data_path).prepare_dataset(data_lines, cover_str, load_verts=True, for_infer=True)
+        if real_file is not None:
+            data_lines = utils.load_data_lines(real_file)
+            for cover_str in ['uncover', 'cover1', 'cover2']:
+                data_returns = SLPDataset(self.data_path).prepare_dataset(
+                    data_lines, cover_str, load_verts=True, for_infer=True)
+                self._concat_data_returns(data_returns)
+        else:
+            print('No real inference data used')
+
+        if synth_file is not None:
+            data_lines = utils.load_data_lines(synth_file)
+            data_returns = BPDataset(self.data_path).prepare_dataset(
+                data_lines, load_verts=True, for_infer=True)
             self._concat_data_returns(data_returns)
-        data_lines = utils.load_data_lines(synth_file)
-        data_returns = BPDataset(self.data_path).prepare_dataset(data_lines, load_verts=True, for_infer=True)
-        self._concat_data_returns(data_returns)
+        else:
+            print('No synthetic inference data used')
+
+        if self.data_pressure_x is None:
+            raise ValueError('At least one real or synthetic inference split is required')
 
         self.data_pmap_y = torch.tensor(self.data_pmap_y).float()
         self.data_verts_y = torch.tensor(self.data_verts_y).float()

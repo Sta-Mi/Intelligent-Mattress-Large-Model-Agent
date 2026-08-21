@@ -78,6 +78,10 @@ python main.py ../model_config/PressureTransformerSynth.json
 validation 上计算 MPJPE、PVE、Height/Chest/Waist/Hips 和 v2vP/1EA/2EA。训练期详细 metric
 每 100 epoch 运行一次，因为 mesh 截面人体尺寸计算明显慢于 loss validation。
 
+纯 synthetic 配置的 inference loader 会跳过 `real_file=None`，不会再尝试把 `None` 传给
+`open()`。启动日志中的 SMPL NumPy non-writable warning 来自上游 `smplpytorch` 将只读 Chumpy
+数组包装为 tensor；当前代码没有写该 tensor，它不是此次数据加载失败的原因。
+
 ### B. 取得合法真实测试数据后（最终论文应做）
 
 把两种模型都放到同一 subject-disjoint 真实压力测试集，统一 SMPL-24 joint order、单位、
