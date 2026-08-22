@@ -107,6 +107,11 @@ def parse_args(args):
     args['epochs_val_viz'] = args.get('epochs_val_viz', args['epochs_metric'])
     args['metric_at_start'] = args.get('metric_at_start', False)
     args['detect_anomaly'] = args.get('detect_anomaly', False)
+    args['amp'] = args.get('amp', False)
+    args['batch_progress'] = args.get('batch_progress', True)
+    args['max_train_batches'] = args.get('max_train_batches', 0)
+    args['skip_validation'] = args.get('skip_validation', False)
+    args['skip_final_diagnostics'] = args.get('skip_final_diagnostics', False)
 
     # exp setup
     args['exp str'] = args.get('exp str', 'exp str is not set')

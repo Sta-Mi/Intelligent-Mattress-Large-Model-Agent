@@ -126,12 +126,17 @@ class PMMTrainer():
     def _train_epoch(self, model):
         model.train()
         running_losses = defaultdict(float)
+        batch_count = 0
         # Anomaly detection retains additional autograd state and synchronizes
         # operations. It is useful for debugging NaNs, but prohibitively slow
         # for full BodyPressure training, so keep it opt-in.
         with torch.autograd.set_detect_anomaly(self.args['detect_anomaly']):
-            for _, batch_pressure_images, _, batch_depth_images, batch_labels, batch_pmap, _, _ in iter(self.train_loader):
-                self.opt.zero_grad()
+            batches = tqdm(self.train_loader, desc='train batches', leave=False,
+                           disable=not self.args['batch_progress'])
+            for batch_index, (_, batch_pressure_images, _, batch_depth_images, batch_labels, batch_pmap, _, _) in enumerate(batches):
+                if self.args['max_train_batches'] and batch_index >= self.args['max_train_batches']:
+                    break
+                self.opt.zero_grad(set_to_none=True)
 
                 batch_pressure_images = batch_pressure_images.to(DEVICE)
                 batch_depth_images = batch_depth_images.to(DEVICE)
@@ -140,34 +145,39 @@ class PMMTrainer():
                     batch_pmap = batch_pmap.to(DEVICE)
                 batch_labels_copy = batch_labels.clone()
 
-                batch_mesh_pred, batch_pmap_pred, batch_contact_pred, _ = model(batch_depth_images, batch_pressure_images, batch_labels[:, 157:159])
-                mesh_gt = model.mesh_infer_gt(torch.cat((
+                with torch.cuda.amp.autocast(enabled=self.args['amp']):
+                    batch_mesh_pred, batch_pmap_pred, batch_contact_pred, _ = model(batch_depth_images, batch_pressure_images, batch_labels[:, 157:159])
+                    mesh_gt = model.mesh_infer_gt(torch.cat((
                                         batch_labels[:, 72:82], 
                                         batch_labels[:, 154:157],
                                         torch.cos(batch_labels[:, 82:85]),
                                         torch.sin(batch_labels[:, 82:85]),
                                         batch_labels[:, 85:154],
                                     ), axis=1), batch_labels[:, 157:159])
-                mesh_gt = {
-                    'out_verts' : mesh_gt['out_verts'],
-                    'out_joint_pos' : mesh_gt['out_joint_pos']
-                }
-                
-                losses = self._get_losses(batch_mesh_pred, batch_pmap_pred, batch_contact_pred, batch_labels_copy, mesh_gt, batch_pmap)
+                    mesh_gt = {
+                        'out_verts' : mesh_gt['out_verts'],
+                        'out_joint_pos' : mesh_gt['out_joint_pos']
+                    }
+                    losses = self._get_losses(batch_mesh_pred, batch_pmap_pred, batch_contact_pred, batch_labels_copy, mesh_gt, batch_pmap)
                 for k in losses:
                     running_losses[k] += losses[k].item()
-                losses['total_loss'].backward()
-
-                self.opt.step()
+                self.scaler.scale(losses['total_loss']).backward()
+                self.scaler.step(self.opt)
+                self.scaler.update()
+                batch_count += 1
+                if batch_index == 0 or (batch_index + 1) % 50 == 0:
+                    batches.set_postfix(loss=f"{losses['total_loss'].item():.4f}")
         for k in running_losses:
-            running_losses[k] /= self.args['train_len']
+            running_losses[k] /= max(batch_count, 1)
         return running_losses
 
     def _validate_epoch(self, model):
         model.eval()
         running_losses = defaultdict(float)
         with torch.no_grad():
-            for _, batch_pressure_images, _, batch_depth_images, batch_labels, batch_pmap, batch_verts, _ in iter(self.val_loader):
+            for _, batch_pressure_images, _, batch_depth_images, batch_labels, batch_pmap, batch_verts, _ in tqdm(
+                    self.val_loader, desc='validation batches', leave=False,
+                    disable=not self.args['batch_progress']):
 
                 batch_pressure_images = batch_pressure_images.to(DEVICE)
                 batch_depth_images = batch_depth_images.to(DEVICE)
@@ -193,30 +203,42 @@ class PMMTrainer():
                 #     'out_joint_pos' : mesh_gt['out_joint_pos']
                 # }
 
-                batch_mesh_pred, batch_pmap_pred, batch_contact_pred, _ = model(batch_depth_images, batch_pressure_images, batch_labels[:, 157:159])
-
-                losses = self._get_losses(batch_mesh_pred, batch_pmap_pred, batch_contact_pred, batch_labels_copy, mesh_gt, batch_pmap)
+                with torch.cuda.amp.autocast(enabled=self.args['amp']):
+                    batch_mesh_pred, batch_pmap_pred, batch_contact_pred, _ = model(batch_depth_images, batch_pressure_images, batch_labels[:, 157:159])
+                    losses = self._get_losses(batch_mesh_pred, batch_pmap_pred, batch_contact_pred, batch_labels_copy, mesh_gt, batch_pmap)
                 for k in losses:
                     running_losses[k] += losses[k].item()
         for k in running_losses:
-            running_losses[k] /= self.args['val_len']
+            running_losses[k] /= max(len(self.val_loader), 1)
         return running_losses
 
     def _train_model(self, model):
         model = model.to(DEVICE)
         print (f"Starting training for experiment - {self.args['name']} {self.args['exp str']}")
         print (f"Starting model training for {self.args['epochs'] - self.starting_epoch} epochs starting from {self.starting_epoch}")
+        print(f"Device={DEVICE}; train batches/epoch={len(self.train_loader)}; "
+              f"val batches={len(self.val_loader)}; AMP={self.args['amp']}")
         print (f"Validation every {self.args['epochs_validate']} epoch(s); "
                f"metrics every {self.args['epochs_metric']} epoch(s); "
                f"autograd anomaly detection={self.args['detect_anomaly']}")
 
-        for e in tqdm(range(self.starting_epoch, self.args['epochs'], 1)):
+        for e in tqdm(range(self.starting_epoch, self.args['epochs'], 1),
+                      desc='epochs (complete training run)', unit='epoch'):
+            epoch_start = time.time()
             train_losses = self._train_epoch(model)
-            should_validate = (
-                e % self.args['epochs_validate'] == 0
+            should_validate = not self.args['skip_validation'] and (
+                (e + 1) % self.args['epochs_validate'] == 0
                 or e == self.args['epochs'] - 1
             )
             val_losses = self._validate_epoch(model) if should_validate else None
+            epoch_seconds = time.time() - epoch_start
+            processed_batches = (min(len(self.train_loader), self.args['max_train_batches'])
+                                 if self.args['max_train_batches'] else len(self.train_loader))
+            seconds_per_batch = epoch_seconds / max(processed_batches, 1)
+            remaining_epochs = self.args['epochs'] - e - 1
+            print(f"Epoch {e + 1}/{self.args['epochs']}: {epoch_seconds / 60:.2f} min, "
+                  f"{seconds_per_batch:.3f} s/train-batch (includes validation={should_validate}); "
+                  f"naive remaining={remaining_epochs * epoch_seconds / 3600:.2f} h")
 
             for k in train_losses:
                 self.writer.add_scalar(f'Loss/{k}/train', train_losses[k], e)
@@ -239,9 +261,20 @@ class PMMTrainer():
                 self._save_model(model, e)
                 model.to(DEVICE)
 
-        PMMInfer(model, self.infer_loader, writer=self.writer, save_gt=False, epoch=self.args['epochs'], pmap_norm=self.args['normalize_pressure'], infer_pmap=self.args['pmap_loss'], infer_smpl=self.args['smpl_loss'])
-        metric = PMMMetric(model, self.metric_loader, writer=self.writer, epoch=self.args['epochs'], pmap_norm=self.args['normalize_pressure'], infer_pmap=self.args['pmap_loss'], infer_smpl=self.args['smpl_loss'])
-        self.args['metric'] = metric
+        if not self.args['skip_final_diagnostics']:
+            PMMInfer(model, self.infer_loader, writer=self.writer, save_gt=False, epoch=self.args['epochs'], pmap_norm=self.args['normalize_pressure'], infer_pmap=self.args['pmap_loss'], infer_smpl=self.args['smpl_loss'])
+            metric = PMMMetric(model, self.metric_loader, writer=self.writer, epoch=self.args['epochs'], pmap_norm=self.args['normalize_pressure'], infer_pmap=self.args['pmap_loss'], infer_smpl=self.args['smpl_loss'])
+            self.args['metric'] = metric
+            metrics_path = os.path.join(self.output_path, 'metrics.json')
+            with open(metrics_path, 'w') as stream:
+                json.dump({
+                    'name': self.args['name'],
+                    'modality': self.args['modality'],
+                    'exp_run': self.args['exp_run'],
+                    'epoch': self.args['epochs'],
+                    'metrics': metric,
+                }, stream, indent=2)
+            print(f'Final metrics saved to {metrics_path}')
         self._save_model(model, self.args['epochs'])
         return model
 
@@ -294,6 +327,7 @@ class PMMTrainer():
         for param in model.mesh_model.parameters():
             param.requires_grad = False
         self.opt = optim.Adam(model.parameters(), lr=self.args['lr'], weight_decay=self.args['weight_decay'])
+        self.scaler = torch.cuda.amp.GradScaler(enabled=self.args['amp'])
         return model
 
     def _load_model(self, model):
